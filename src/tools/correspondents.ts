@@ -7,7 +7,8 @@ export function registerCorrespondentTools(server: McpServer, api, readOnly = fa
     "Retrieve all available correspondents (people, companies, organizations that send/receive documents). Returns names and automatic matching patterns for document assignment.",
     { }, async (args, extra) => {
     if (!api) throw new Error("Please configure API connection first");
-    return api.getCorrespondents();
+    const result = await api.getCorrespondents();
+    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
   });
 
   server.tool(
@@ -23,7 +24,8 @@ export function registerCorrespondentTools(server: McpServer, api, readOnly = fa
     async (args, extra) => {
       if (readOnly) throw new Error("This tool is disabled in read-only mode");
       if (!api) throw new Error("Please configure API connection first");
-      return api.createCorrespondent(args);
+      const result = await api.createCorrespondent(args);
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     }
   );
 
@@ -51,7 +53,7 @@ export function registerCorrespondentTools(server: McpServer, api, readOnly = fa
     async (args, extra) => {
       if (readOnly) throw new Error("This tool is disabled in read-only mode");
       if (!api) throw new Error("Please configure API connection first");
-      return api.bulkEditObjects(
+      const result = await api.bulkEditObjects(
         args.correspondent_ids,
         "correspondents",
         args.operation,
@@ -63,6 +65,7 @@ export function registerCorrespondentTools(server: McpServer, api, readOnly = fa
             }
           : {}
       );
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     }
   );
 }

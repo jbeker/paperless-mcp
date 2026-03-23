@@ -54,7 +54,8 @@ export function registerDocumentTools(server, api, readOnly = false) {
       if (readOnly) throw new Error("This tool is disabled in read-only mode");
       if (!api) throw new Error("Please configure API connection first");
       const { documents, method, ...parameters } = args;
-      return api.bulkEditDocuments(documents, method, parameters);
+      const result = await api.bulkEditDocuments(documents, method, parameters);
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     }
   );
 
@@ -80,7 +81,8 @@ export function registerDocumentTools(server, api, readOnly = false) {
       const blob = new Blob([binaryData]);
       const file = new File([blob], args.filename);
       const { file: _, filename: __, ...metadata } = args;
-      return api.postDocument(file, metadata);
+      const result = await api.postDocument(file, metadata);
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     }
   );
 
@@ -92,7 +94,8 @@ export function registerDocumentTools(server, api, readOnly = false) {
     },
     async (args, extra) => {
       if (!api) throw new Error("Please configure API connection first");
-      return api.getDocument(args.id);
+      const result = await api.getDocument(args.id);
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     }
   );
 
@@ -106,7 +109,8 @@ export function registerDocumentTools(server, api, readOnly = false) {
     },
     async (args, extra) => {
       if (!api) throw new Error("Please configure API connection first");
-      return api.searchDocuments(args.query, args.page, args.page_size);
+      const result = await api.searchDocuments(args.query, args.page, args.page_size);
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     }
   );
 
@@ -120,7 +124,7 @@ export function registerDocumentTools(server, api, readOnly = false) {
     async (args, extra) => {
       if (!api) throw new Error("Please configure API connection first");
       const response = await api.downloadDocument(args.id, args.original);
-      return {
+      const result = {
         blob: Buffer.from(await response.arrayBuffer()).toString("base64"),
         filename:
           response.headers
@@ -128,6 +132,7 @@ export function registerDocumentTools(server, api, readOnly = false) {
             ?.split("filename=")[1]
             ?.replace(/"/g, "") || `document-${args.id}`,
       };
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     }
   );
 }

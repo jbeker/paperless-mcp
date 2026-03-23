@@ -8,7 +8,8 @@ export function registerDocumentTypeTools(server, api, readOnly = false) {
     // No parameters - returns all available document types
   }, async (args, extra) => {
     if (!api) throw new Error("Please configure API connection first");
-    return api.getDocumentTypes();
+    const result = await api.getDocumentTypes();
+    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
   });
 
   server.tool(
@@ -24,7 +25,8 @@ export function registerDocumentTypeTools(server, api, readOnly = false) {
     async (args, extra) => {
       if (readOnly) throw new Error("This tool is disabled in read-only mode");
       if (!api) throw new Error("Please configure API connection first");
-      return api.createDocumentType(args);
+      const result = await api.createDocumentType(args);
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     }
   );
 
@@ -52,7 +54,7 @@ export function registerDocumentTypeTools(server, api, readOnly = false) {
     async (args, extra) => {
       if (readOnly) throw new Error("This tool is disabled in read-only mode");
       if (!api) throw new Error("Please configure API connection first");
-      return api.bulkEditObjects(
+      const result = await api.bulkEditObjects(
         args.document_type_ids,
         "document_types",
         args.operation,
@@ -64,6 +66,7 @@ export function registerDocumentTypeTools(server, api, readOnly = false) {
             }
           : {}
       );
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     }
   );
 }

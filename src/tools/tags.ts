@@ -8,7 +8,8 @@ export function registerTagTools(server, api, readOnly = false) {
     // No parameters - returns all available tags
   }, async (args, extra) => {
     if (!api) throw new Error("Please configure API connection first");
-    return api.getTags();
+    const result = await api.getTags();
+    return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
   });
 
   server.tool(
@@ -26,7 +27,8 @@ export function registerTagTools(server, api, readOnly = false) {
     async (args, extra) => {
       if (readOnly) throw new Error("This tool is disabled in read-only mode");
       if (!api) throw new Error("Please configure API connection first");
-      return api.createTag(args);
+      const result = await api.createTag(args);
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     }
   );
 
@@ -46,7 +48,8 @@ export function registerTagTools(server, api, readOnly = false) {
     async (args, extra) => {
       if (readOnly) throw new Error("This tool is disabled in read-only mode");
       if (!api) throw new Error("Please configure API connection first");
-      return api.updateTag(args.id, args);
+      const result = await api.updateTag(args.id, args);
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     }
   );
 
@@ -59,7 +62,8 @@ export function registerTagTools(server, api, readOnly = false) {
     async (args, extra) => {
       if (readOnly) throw new Error("This tool is disabled in read-only mode");
       if (!api) throw new Error("Please configure API connection first");
-      return api.deleteTag(args.id);
+      const result = await api.deleteTag(args.id);
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     }
   );
 
@@ -87,7 +91,7 @@ export function registerTagTools(server, api, readOnly = false) {
     async (args, extra) => {
       if (readOnly) throw new Error("This tool is disabled in read-only mode");
       if (!api) throw new Error("Please configure API connection first");
-      return api.bulkEditObjects(
+      const result = await api.bulkEditObjects(
         args.tag_ids,
         "tags",
         args.operation,
@@ -99,6 +103,7 @@ export function registerTagTools(server, api, readOnly = false) {
             }
           : {}
       );
+      return { content: [{ type: "text" as const, text: JSON.stringify(result, null, 2) }] };
     }
   );
 }
