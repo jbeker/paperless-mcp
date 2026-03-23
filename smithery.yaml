@@ -15,7 +15,11 @@ startCommand:
       token:
         type: string
         description: The API token for accessing your Paperless-NGX instance.
+      readOnly:
+        type: boolean
+        description: Run in read-only mode, disabling all write operations.
+        default: false
   commandFunction:
     # A function that produces the CLI command to start the MCP on stdio.
     |-
-    (config) => ({command: 'node', args: ['src/index.js', config.baseUrl, config.token]})
+    (config) => ({command: 'node', args: ['src/index.js', config.baseUrl, config.token, ...(config.readOnly ? ['--read-only'] : [])]})

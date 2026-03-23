@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export function registerDocumentTypeTools(server, api) {
+export function registerDocumentTypeTools(server, api, readOnly = false) {
   server.tool(
     "list_document_types",
     "Retrieve all available document types for categorizing documents by purpose or format (Invoice, Receipt, Contract, etc.). Returns names and automatic matching rules.",
@@ -22,6 +22,7 @@ export function registerDocumentTypeTools(server, api) {
         .optional().describe("How to match text patterns: 'any'=any word matches, 'all'=all words must match, 'exact'=exact phrase match, 'regular expression'=use regex patterns, 'fuzzy'=approximate matching with typos. Default is 'any'."),
     },
     async (args, extra) => {
+      if (readOnly) throw new Error("This tool is disabled in read-only mode");
       if (!api) throw new Error("Please configure API connection first");
       return api.createDocumentType(args);
     }
@@ -49,6 +50,7 @@ export function registerDocumentTypeTools(server, api) {
       merge: z.boolean().optional().describe("Whether to merge with existing permissions (true) or replace them entirely (false). Default is false."),
     },
     async (args, extra) => {
+      if (readOnly) throw new Error("This tool is disabled in read-only mode");
       if (!api) throw new Error("Please configure API connection first");
       return api.bulkEditObjects(
         args.document_type_ids,
