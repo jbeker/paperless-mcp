@@ -347,3 +347,24 @@ npm run start -- <baseUrl> <token> --http --port 3000
 - The MCP API will be available at `POST /mcp` on the specified port.
 - Each request is handled statelessly, following the [StreamableHTTPServerTransport](https://github.com/modelcontextprotocol/typescript-sdk) pattern.
 - GET and DELETE requests to `/mcp` will return 405 Method Not Allowed.
+
+### Read-Only Mode
+
+Add the `--read-only` flag to disable all write operations. In this mode, any tool that would mutate data on the server (create, update, delete, bulk edit, upload) will return an error. Read-only tools (search, get, list, download) remain fully functional.
+
+```
+npm run start -- <baseUrl> <token> --read-only
+npm run start -- <baseUrl> <token> --http --port 3000 --read-only
+```
+
+To use read-only mode in your MCP configuration:
+```json
+{
+  "mcpServers": {
+    "paperless": {
+      "command": "npx",
+      "args": ["paperless-mcp", "http://your-paperless-instance:8000", "your-api-token", "--read-only"]
+    }
+  }
+}
+```
