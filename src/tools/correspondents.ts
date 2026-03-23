@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
 import { z } from "zod";
 
-export function registerCorrespondentTools(server: McpServer, api) {
+export function registerCorrespondentTools(server: McpServer, api, readOnly = false) {
   server.tool(
     "list_correspondents",
     "Retrieve all available correspondents (people, companies, organizations that send/receive documents). Returns names and automatic matching patterns for document assignment.",
@@ -21,6 +21,7 @@ export function registerCorrespondentTools(server: McpServer, api) {
         .optional().describe("How to match text patterns: 'any'=any word matches, 'all'=all words must match, 'exact'=exact phrase match, 'regular expression'=use regex patterns, 'fuzzy'=approximate matching with typos. Default is 'any'."),
     },
     async (args, extra) => {
+      if (readOnly) throw new Error("This tool is disabled in read-only mode");
       if (!api) throw new Error("Please configure API connection first");
       return api.createCorrespondent(args);
     }
@@ -48,6 +49,7 @@ export function registerCorrespondentTools(server: McpServer, api) {
       merge: z.boolean().optional().describe("Whether to merge with existing permissions (true) or replace them entirely (false). Default is false."),
     },
     async (args, extra) => {
+      if (readOnly) throw new Error("This tool is disabled in read-only mode");
       if (!api) throw new Error("Please configure API connection first");
       return api.bulkEditObjects(
         args.correspondent_ids,

@@ -12,11 +12,23 @@ import { registerTagTools } from "./tools/tags";
 // Simple CLI argument parsing
 const args = process.argv.slice(2);
 const useHttp = args.includes("--http");
+const readOnly = args.includes("--read-only");
 let port = 3000;
 const portIndex = args.indexOf("--port");
 if (portIndex !== -1 && args[portIndex + 1]) {
   const parsed = parseInt(args[portIndex + 1], 10);
   if (!isNaN(parsed)) port = parsed;
+}
+// Extract positional args (filter out flags and their values)
+const flagsWithValues = new Set(["--port"]);
+const flags = new Set(["--http", "--read-only"]);
+const positionalArgs: string[] = [];
+for (let i = 0; i < args.length; i++) {
+  if (flagsWithValues.has(args[i])) {
+    i++; // skip the flag's value
+  } else if (!flags.has(args[i])) {
+    positionalArgs.push(args[i]);
+  }
 }
 
 async function main() {
@@ -33,14 +45,14 @@ async function main() {
       process.exit(1);
     }
   } else {
-    baseUrl = args[0];
-    token = args[1];
+    baseUrl = positionalArgs[0];
+    token = positionalArgs[1];
     if (!baseUrl || !token) {
       console.error(
-        "Usage: paperless-mcp <baseUrl> <token> [--http] [--port <port>]"
+        "Usage: paperless-mcp <baseUrl> <token> [--http] [--port <port>] [--read-only]"
       );
       console.error(
-        "Example: paperless-mcp http://localhost:8000 your-api-token --http --port 3000"
+        "Example: paperless-mcp http://localhost:8000 your-api-token --http --port 3000 --read-only"
       );
       console.error(
         "When using --http, PAPERLESS_URL and API_KEY environment variables must be set."
@@ -52,10 +64,13 @@ async function main() {
   // Initialize API client and server once
   const api = new PaperlessAPI(baseUrl, token);
   const server = new McpServer({ name: "paperless-ngx", version: "1.0.0" });
-  registerDocumentTools(server, api);
-  registerTagTools(server, api);
-  registerCorrespondentTools(server, api);
-  registerDocumentTypeTools(server, api);
+  if (readOnly) {
+    console.error("Starting in read-only mode. Write operations are disabled.");
+  }
+  registerDocumentTools(server, api, readOnly);
+  registerTagTools(server, api, readOnly);
+  registerCorrespondentTools(server, api, readOnly);
+  registerDocumentTypeTools(server, api, readOnly);
 
   if (useHttp) {
     const app = express();

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export function registerTagTools(server, api) {
+export function registerTagTools(server, api, readOnly = false) {
   server.tool(
     "list_tags",
     "Retrieve all available tags for labeling and organizing documents. Returns tag names, colors, and matching rules for automatic assignment.",
@@ -24,6 +24,7 @@ export function registerTagTools(server, api) {
       matching_algorithm: z.number().int().min(0).max(4).optional().describe("How to match text patterns: 0=any word, 1=all words, 2=exact phrase, 3=regular expression, 4=fuzzy matching. Default is 0 (any word)."),
     },
     async (args, extra) => {
+      if (readOnly) throw new Error("This tool is disabled in read-only mode");
       if (!api) throw new Error("Please configure API connection first");
       return api.createTag(args);
     }
@@ -43,6 +44,7 @@ export function registerTagTools(server, api) {
       matching_algorithm: z.number().int().min(0).max(4).optional().describe("Algorithm for pattern matching: 0=any word, 1=all words, 2=exact phrase, 3=regular expression, 4=fuzzy matching."),
     },
     async (args, extra) => {
+      if (readOnly) throw new Error("This tool is disabled in read-only mode");
       if (!api) throw new Error("Please configure API connection first");
       return api.updateTag(args.id, args);
     }
@@ -55,6 +57,7 @@ export function registerTagTools(server, api) {
       id: z.number().describe("ID of the tag to permanently delete. This will remove the tag from all documents that currently use it. Use list_tags to find tag IDs."),
     },
     async (args, extra) => {
+      if (readOnly) throw new Error("This tool is disabled in read-only mode");
       if (!api) throw new Error("Please configure API connection first");
       return api.deleteTag(args.id);
     }
@@ -82,6 +85,7 @@ export function registerTagTools(server, api) {
       merge: z.boolean().optional().describe("Whether to merge with existing permissions (true) or replace them entirely (false). Default is false."),
     },
     async (args, extra) => {
+      if (readOnly) throw new Error("This tool is disabled in read-only mode");
       if (!api) throw new Error("Please configure API connection first");
       return api.bulkEditObjects(
         args.tag_ids,

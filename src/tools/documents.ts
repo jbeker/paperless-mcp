@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export function registerDocumentTools(server, api) {
+export function registerDocumentTools(server, api, readOnly = false) {
   server.tool(
     "bulk_edit_documents",
     "Perform bulk operations on multiple documents simultaneously: set correspondent/type/tags, delete, reprocess, merge, split, rotate, or manage permissions. Efficient for managing large document collections.",
@@ -51,6 +51,7 @@ export function registerDocumentTools(server, api) {
       degrees: z.number().optional().describe("Rotation angle in degrees when method is 'rotate'. Use 90, 180, or 270 for standard rotations."),
     },
     async (args, extra) => {
+      if (readOnly) throw new Error("This tool is disabled in read-only mode");
       if (!api) throw new Error("Please configure API connection first");
       const { documents, method, ...parameters } = args;
       return api.bulkEditDocuments(documents, method, parameters);
@@ -73,6 +74,7 @@ export function registerDocumentTools(server, api) {
       custom_fields: z.array(z.number()).optional().describe("Array of custom field IDs to associate with this document. Custom fields store additional metadata."),
     },
     async (args, extra) => {
+      if (readOnly) throw new Error("This tool is disabled in read-only mode");
       if (!api) throw new Error("Please configure API connection first");
       const binaryData = Buffer.from(args.file, "base64");
       const blob = new Blob([binaryData]);
@@ -81,7 +83,6 @@ export function registerDocumentTools(server, api) {
       return api.postDocument(file, metadata);
     }
   );
-
 
   server.tool(
     "get_document",
