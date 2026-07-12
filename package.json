@@ -13,6 +13,7 @@
     "build": "tsc",
     "dxt-pack": "dxt pack",
     "inspect": "npm run build && npx -y @modelcontextprotocol/inspector node build/index.js",
+    "prepare": "npm run build",
     "prepack": "npm run build && npm run dxt-pack"
   },
   "keywords": [
