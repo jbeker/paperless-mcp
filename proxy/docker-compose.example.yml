@@ -1,0 +1,31 @@
+# Example deployment for the Paperless upload proxy.
+#
+# Assumes an external reverse proxy terminates TLS for
+# https://paperless-proxy.confusticate.com and forwards plain HTTP to
+# this host on port 8091 with the original Host header preserved
+# (nginx: proxy_set_header Host $host; client_max_body_size 100m;).
+
+services:
+  paperless-upload-proxy:
+    image: registry.confusticate.com/paperless-upload-proxy:latest
+    restart: unless-stopped
+    ports:
+      # The reverse proxy lives on another host, so this must listen on the
+      # network. Restrict access to the reverse proxy with a firewall rule;
+      # the Host check turns away stray traffic (421) but is no substitute.
+      - "8091:8080"
+    environment:
+      # Where the proxy forwards uploads. If Paperless runs in a compose stack
+      # on this same host, prefer joining its network and using the internal
+      # URL (e.g. http://paperless:8000) to keep traffic off the public edge.
+      PAPERLESS_URL: https://paperless.confusticate.com
+
+      # Public hostname this proxy serves. Every request's Host header must
+      # match exactly or it is rejected with 421; also used to build the
+      # upload URLs returned by /mint.
+      ALLOWED_HOST: paperless-proxy.confusticate.com
+
+      # Optional tuning (defaults shown):
+      # LISTEN_ADDR: 0.0.0.0:8080
+      # MAX_BYTES_CEILING: "104857600"   # absolute upload cap, 100 MB
+      # PENDING_LIMIT: "100"             # max concurrent pending mints
