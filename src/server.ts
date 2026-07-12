@@ -9,6 +9,7 @@ import { registerDocumentTypeTools } from "./tools/documentTypes";
 import { registerMailTools } from "./tools/mail";
 import { registerNoteTools } from "./tools/notes";
 import { registerTagTools } from "./tools/tags";
+import { registerUploadProxyTools } from "./tools/uploadProxy";
 
 export interface CreateMcpServerOptions {
   baseUrl: string;
@@ -36,6 +37,7 @@ export function createMcpServer({
   registerDocumentTypeTools(server, api);
   registerCustomFieldTools(server, api);
   registerMailTools(server, api);
+  registerUploadProxyTools(server, api);
   return server;
 }
 

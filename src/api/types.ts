@@ -223,3 +223,20 @@ export interface BulkEditParameters {
     merge?: boolean;
   };
 }
+
+export interface MintUploadRequest {
+  title?: string;
+  correspondent?: number;
+  document_type?: number;
+  tags?: number[];
+  created?: string;
+  max_bytes?: number;
+  ttl_seconds?: number;
+}
+
+export interface MintUploadResponse {
+  upload_url: string;
+  expires_at: string;
+  max_bytes: number;
+  curl_example: string;
+}

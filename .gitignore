@@ -36,3 +36,6 @@ Thumbs.db
 
 # Devfiles / Temp stuff
 temp/
+
+# Rust proxy build output
+proxy/target/

@@ -19,7 +19,8 @@
       "args": ["${__dirname}/build/index.js"],
       "env": {
         "PAPERLESS_URL": "${user_config.url}",
-        "PAPERLESS_API_KEY": "${user_config.api_key}"
+        "PAPERLESS_API_KEY": "${user_config.api_key}",
+        "UPLOAD_PROXY_URL": "${user_config.upload_proxy_url}"
       }
     }
   },
@@ -49,8 +50,8 @@
       "description": "Perform bulk operations on multiple documents."
     },
     {
-      "name": "post_document",
-      "description": "Upload a new document to Paperless-NGX."
+      "name": "request_upload_url",
+      "description": "Request a short-lived, single-use upload URL from the upload proxy."
     },
     {
       "name": "list_tags",
@@ -91,6 +92,13 @@
       "description": "Your Paperless-NGX API key",
       "required": true,
       "sensitive": true
+    },
+    "upload_proxy_url": {
+      "type": "string",
+      "title": "Upload Proxy URL",
+      "description": "Base URL of the paperless-upload-proxy used by request_upload_url, e.g. https://uploads.example.com. Leave empty to disable uploads.",
+      "required": false,
+      "sensitive": false
     }
   },
   "keywords": [

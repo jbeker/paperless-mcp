@@ -15,6 +15,8 @@ import {
   GetMailRulesResponse,
   MailAccount,
   MailRule,
+  MintUploadRequest,
+  MintUploadResponse,
   GetTagsResponse,
   Note,
   Tag,
@@ -166,6 +168,44 @@ export class PaperlessAPI {
         );
       }
       throw error;
+    }
+  }
+
+  /**
+   * Mints a single-use upload URL from the upload proxy (not a Paperless
+   * endpoint), authenticating with the same token this client uses for
+   * Paperless. See proxy/README.md.
+   */
+  async mintUploadUrl(
+    proxyUrl: string,
+    body: MintUploadRequest
+  ): Promise<MintUploadResponse> {
+    try {
+      const response = await axios.post<MintUploadResponse>(
+        `${proxyUrl.replace(/\/$/, "")}/mint`,
+        body,
+        {
+          headers: {
+            Authorization: `Token ${this.token}`,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error) && error.response) {
+        const detail =
+          (error.response.data as { error?: string })?.error ??
+          JSON.stringify(error.response.data);
+        throw new Error(
+          `Upload proxy returned ${error.response.status}: ${detail}`
+        );
+      }
+      throw new Error(
+        `Upload proxy unreachable at ${proxyUrl}: ${
+          error instanceof Error ? error.message : String(error)
+        }`
+      );
     }
   }
 

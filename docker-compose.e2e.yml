@@ -29,6 +29,19 @@ services:
       retries: 30
       start_period: 60s
 
+  upload-proxy:
+    build: ./proxy
+    restart: on-failure
+    depends_on:
+      - paperless
+    ports:
+      - "127.0.0.1:8091:8080"
+    environment:
+      PAPERLESS_URL: http://paperless:8000
+      ALLOWED_HOST: localhost:8091
+      # No TLS reverse proxy in the e2e stack, so minted URLs must be http.
+      PUBLIC_SCHEME: http
+
 volumes:
   paperless-data:
   paperless-media:

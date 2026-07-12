@@ -1,6 +1,7 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { spawn, ChildProcess } from "node:child_process";
+import { request as httpRequest } from "node:http";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { connectMcpClient, parseToolText, ToolResult } from "./client";
 
@@ -8,6 +9,10 @@ const PAPERLESS_URL = process.env.PAPERLESS_URL ?? "http://localhost:8000";
 const PAPERLESS_TOKEN = process.env.PAPERLESS_TOKEN ?? "";
 const MCP_PORT = process.env.MCP_PORT ?? "3001";
 const MCP_URL = process.env.MCP_URL ?? `http://localhost:${MCP_PORT}/mcp`;
+// The upload-proxy service from docker-compose.e2e.yml. Proxy tests skip when
+// it is not reachable (e.g. CI jobs that only start Paperless).
+const UPLOAD_PROXY_URL =
+  process.env.UPLOAD_PROXY_URL ?? "http://localhost:8091";
 
 const RUN_TAG = `e2e-tag-${Date.now()}`;
 const RUN_CORRESPONDENT = `E2E Corp ${Date.now()}`;
@@ -102,6 +107,102 @@ async function deleteCustomFieldDirect(id: number): Promise<void> {
   });
 }
 
+const MULTIPART_BOUNDARY = "----e2eProxyBoundary";
+
+// Manual multipart assembly so the request carries a Content-Length header,
+// matching what curl sends (the proxy rejects length-less uploads).
+function buildMultipartBody(
+  filename: string,
+  content: Buffer,
+  extraFields: Record<string, string> = {}
+): Buffer {
+  const parts: Buffer[] = [];
+  for (const [name, value] of Object.entries(extraFields)) {
+    parts.push(
+      Buffer.from(
+        `--${MULTIPART_BOUNDARY}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`
+      )
+    );
+  }
+  parts.push(
+    Buffer.from(
+      `--${MULTIPART_BOUNDARY}\r\nContent-Disposition: form-data; name="document"; filename="${filename}"\r\nContent-Type: application/pdf\r\n\r\n`
+    )
+  );
+  parts.push(content);
+  parts.push(Buffer.from(`\r\n--${MULTIPART_BOUNDARY}--\r\n`));
+  return Buffer.concat(parts);
+}
+
+// fetch (undici) derives Content-Length from the Buffer body on its own,
+// which the proxy requires.
+const MULTIPART_CONTENT_TYPE = `multipart/form-data; boundary=${MULTIPART_BOUNDARY}`;
+
+// The MCP no longer exposes an in-band upload tool, so the fixture document
+// that the rest of the scenario depends on is created via the Paperless REST
+// API directly.
+async function postDocumentDirect(
+  content: Buffer,
+  filename: string,
+  title: string
+): Promise<void> {
+  const body = buildMultipartBody(filename, content, { title });
+  const res = await fetch(`${PAPERLESS_URL}/api/documents/post_document/`, {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${PAPERLESS_TOKEN}`,
+      "Content-Type": MULTIPART_CONTENT_TYPE,
+    },
+    body,
+  });
+  if (!res.ok) {
+    throw new Error(
+      `Direct document upload failed: ${res.status} ${await res.text()}`
+    );
+  }
+}
+
+async function deleteDocumentDirect(id: number): Promise<void> {
+  await fetch(`${PAPERLESS_URL}/api/documents/${id}/`, {
+    method: "DELETE",
+    headers: { Authorization: `Token ${PAPERLESS_TOKEN}` },
+  });
+}
+
+async function isUploadProxyAvailable(): Promise<boolean> {
+  try {
+    const res = await fetch(`${UPLOAD_PROXY_URL}/healthz`, {
+      signal: AbortSignal.timeout(2000),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function pollForDocumentByTitle(title: string): Promise<number> {
+  const deadline = Date.now() + 60000;
+  while (Date.now() < deadline) {
+    const listResult = (await client.callTool({
+      name: "list_documents",
+      arguments: { ordering: "-id", page_size: 20 },
+    })) as ToolResult;
+    if (!listResult.isError) {
+      const list = parseToolText(listResult) as {
+        results: Array<{ id: number; title: string }>;
+      };
+      const match = list.results.find((d) => d.title === title);
+      if (match) {
+        return match.id;
+      }
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  throw new Error(
+    `Document with title "${title}" not visible via list_documents after 60s`
+  );
+}
+
 async function waitForMcp(url: string, maxAttempts = 30): Promise<void> {
   const base = url.replace(/\/mcp$/, "");
   for (let i = 0; i < maxAttempts; i++) {
@@ -129,7 +230,10 @@ function startMcpServer(): ChildProcess {
       "--token",
       PAPERLESS_TOKEN,
     ],
-    { stdio: ["ignore", "pipe", "pipe"] }
+    {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, UPLOAD_PROXY_URL },
+    }
   );
   proc.stderr?.on("data", (d) => process.stderr.write(d));
   return proc;
@@ -270,50 +374,12 @@ describe("Paperless MCP E2E scenario", () => {
     assert.strictEqual(found.name, RUN_DOCUMENT_TYPE);
   });
 
-  it("post_document uploads a PDF and resolves to a document id", async () => {
-    const base64Pdf = MINIMAL_PDF.toString("base64");
-    const result = (await client.callTool({
-      name: "post_document",
-      arguments: {
-        file: base64Pdf,
-        filename: "e2e-fixture.pdf",
-        title: RUN_DOCUMENT_TITLE,
-      },
-    })) as ToolResult;
-    assertOk(result, "post_document");
-    const data = parseToolText(result) as { id?: number; status?: string };
-
-    if (typeof data.id === "number") {
-      state.documentId = data.id;
-      return;
-    }
-    assert.ok(
-      typeof data.status === "string",
-      `post_document should return id or status, got ${JSON.stringify(data)}`
-    );
-
-    // Async ingestion: poll list_documents until our title appears.
-    const deadline = Date.now() + 60000;
-    while (Date.now() < deadline) {
-      const listResult = (await client.callTool({
-        name: "list_documents",
-        arguments: { ordering: "-id", page_size: 20 },
-      })) as ToolResult;
-      if (!listResult.isError) {
-        const list = parseToolText(listResult) as {
-          results: Array<{ id: number; title: string }>;
-        };
-        const match = list.results.find((d) => d.title === RUN_DOCUMENT_TITLE);
-        if (match) {
-          state.documentId = match.id;
-          return;
-        }
-      }
-      await new Promise((r) => setTimeout(r, 2000));
-    }
-    throw new Error(
-      `Document with title "${RUN_DOCUMENT_TITLE}" not visible via list_documents after 60s (post_document status=${data.status})`
-    );
+  it("uploads a fixture PDF and resolves it to a document id", async () => {
+    // Document upload now goes through the upload proxy (covered by its own
+    // scenario below); the shared fixture is provisioned via the REST API so
+    // the rest of the suite does not depend on the proxy being present.
+    await postDocumentDirect(MINIMAL_PDF, "e2e-fixture.pdf", RUN_DOCUMENT_TITLE);
+    state.documentId = await pollForDocumentByTitle(RUN_DOCUMENT_TITLE);
   });
 
   it("list_documents returns pagination shape with count>=1", async () => {
@@ -802,6 +868,152 @@ describe("Paperless MCP E2E scenario", () => {
     })) as ToolResult;
     assertOk(result, "delete_custom_field");
     state.selectFieldId = undefined;
+  });
+});
+
+describe("Upload proxy E2E scenario", () => {
+  const RUN_PROXY_DOC_TITLE = `E2E Proxy Document ${Date.now()}`;
+  // Distinct trailing comment so Paperless's duplicate-checksum check does not
+  // reject this upload as a copy of the fixture document.
+  const PROXY_PDF = Buffer.concat([
+    MINIMAL_PDF,
+    Buffer.from(`%${RUN_PROXY_DOC_TITLE}\n`),
+  ]);
+
+  let proxyAvailable = false;
+  let uploadUrl: string | undefined;
+  let proxyDocumentId: number | undefined;
+
+  before(async () => {
+    proxyAvailable = await isUploadProxyAvailable();
+    if (!proxyAvailable) {
+      console.log(
+        `Upload proxy not reachable at ${UPLOAD_PROXY_URL}; skipping proxy scenario.`
+      );
+    }
+  });
+
+  after(async () => {
+    if (proxyDocumentId !== undefined) {
+      try {
+        await deleteDocumentDirect(proxyDocumentId);
+      } catch (err) {
+        console.error("Failed to clean up proxy-uploaded document:", err);
+      }
+    }
+  });
+
+  async function mintViaMcp(
+    args: Record<string, unknown>
+  ): Promise<{ upload_url: string; expires_at: string; max_bytes: number }> {
+    const result = (await client.callTool({
+      name: "request_upload_url",
+      arguments: args,
+    })) as ToolResult;
+    assertOk(result, "request_upload_url");
+    return parseToolText(result) as {
+      upload_url: string;
+      expires_at: string;
+      max_bytes: number;
+    };
+  }
+
+  async function postToProxy(url: string, body: Buffer): Promise<Response> {
+    return fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": MULTIPART_CONTENT_TYPE },
+      body,
+    });
+  }
+
+  it("request_upload_url mints a single-use upload URL", async (t) => {
+    if (!proxyAvailable) return t.skip("upload proxy not reachable");
+    const minted = await mintViaMcp({
+      title: RUN_PROXY_DOC_TITLE,
+      ttl_seconds: 600,
+    });
+    assert.ok(
+      minted.upload_url.startsWith(`${UPLOAD_PROXY_URL}/upload/`),
+      `upload_url should point at the proxy, got ${minted.upload_url}`
+    );
+    assert.ok(typeof minted.expires_at === "string", "expires_at missing");
+    assert.ok(typeof minted.max_bytes === "number", "max_bytes missing");
+    uploadUrl = minted.upload_url;
+  });
+
+  it("uploading to the minted URL ingests the document", async (t) => {
+    if (!proxyAvailable) return t.skip("upload proxy not reachable");
+    assert.ok(uploadUrl, "mint must have succeeded first");
+
+    const response = await postToProxy(
+      uploadUrl,
+      buildMultipartBody("e2e-proxy.pdf", PROXY_PDF)
+    );
+    const text = await response.text();
+    assert.strictEqual(
+      response.status,
+      200,
+      `upload should succeed, got ${response.status}: ${text}`
+    );
+    const data = JSON.parse(text) as { status: string; task_id: string };
+    assert.strictEqual(data.status, "ok");
+    assert.ok(data.task_id, "task_id missing from upload response");
+
+    proxyDocumentId = await pollForDocumentByTitle(RUN_PROXY_DOC_TITLE);
+  });
+
+  it("rejects a second upload to the same URL", async (t) => {
+    if (!proxyAvailable) return t.skip("upload proxy not reachable");
+    assert.ok(uploadUrl, "mint must have succeeded first");
+    const response = await postToProxy(
+      uploadUrl,
+      buildMultipartBody("e2e-proxy.pdf", PROXY_PDF)
+    );
+    assert.strictEqual(response.status, 403);
+  });
+
+  it("rejects an expired upload URL", async (t) => {
+    if (!proxyAvailable) return t.skip("upload proxy not reachable");
+    const minted = await mintViaMcp({ ttl_seconds: 1 });
+    await new Promise((r) => setTimeout(r, 1500));
+    const response = await postToProxy(
+      minted.upload_url,
+      buildMultipartBody("late.pdf", PROXY_PDF)
+    );
+    assert.strictEqual(response.status, 403);
+  });
+
+  it("rejects uploads above the minted size limit", async (t) => {
+    if (!proxyAvailable) return t.skip("upload proxy not reachable");
+    const minted = await mintViaMcp({ max_bytes: 10 });
+    const response = await postToProxy(
+      minted.upload_url,
+      buildMultipartBody("big.pdf", PROXY_PDF)
+    );
+    assert.strictEqual(response.status, 413);
+  });
+
+  it("rejects requests with a mismatched Host header", async (t) => {
+    if (!proxyAvailable) return t.skip("upload proxy not reachable");
+    const { hostname, port } = new URL(UPLOAD_PROXY_URL);
+    const status = await new Promise<number>((resolve, reject) => {
+      const req = httpRequest(
+        {
+          hostname,
+          port,
+          path: "/healthz",
+          method: "GET",
+          headers: { Host: "evil.example.com" },
+        },
+        (res) => {
+          res.resume();
+          resolve(res.statusCode ?? 0);
+        }
+      );
+      req.on("error", reject);
+      req.end();
+    });
+    assert.strictEqual(status, 421);
   });
 });
 
