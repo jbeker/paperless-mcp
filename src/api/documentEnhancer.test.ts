@@ -2,8 +2,24 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CallToolResult } from "@modelcontextprotocol/sdk/types";
 import { convertDocsWithNames } from "./documentEnhancer";
+import { PaperlessAPI } from "./PaperlessAPI";
 import { DocumentsResponse } from "./types";
 import { createDocument, createPaperlessApiMock } from "../test/mocks/paperlessApi";
+
+interface LookupPage {
+  next?: string | null;
+  results: Array<Record<string, unknown>>;
+}
+
+function createLookupApi(pages: Record<string, LookupPage>): PaperlessAPI {
+  return {
+    request: async (path: string) => {
+      const page = pages[path];
+      if (!page) return { count: 0, next: null, results: [] };
+      return { count: page.results.length, next: page.next ?? null, results: page.results };
+    },
+  } as unknown as PaperlessAPI;
+}
 
 const LARGE_DOCUMENT_COUNT = 709;
 const MAX_RESPONSE_SIZE_BYTES = 2000;
@@ -75,4 +91,60 @@ test("convertDocsWithNames returns paginated JSON for empty multi-document resul
     previous: null,
     results: [],
   });
+});
+
+test("resolves names for entities beyond the first page of lookup results", async () => {
+  const api = createLookupApi({
+    "/correspondents/?page_size=1000": {
+      next: "http://paperless.local/api/correspondents/?page=2&page_size=1000",
+      results: [{ id: 1, name: "First Page Corp" }],
+    },
+    "/correspondents/?page=2&page_size=1000": {
+      results: [{ id: 3, name: "American Express" }],
+    },
+  });
+
+  const result = await convertDocsWithNames(
+    createDocument({ correspondent: 3 }),
+    api
+  );
+  const parsed = JSON.parse((result.content[0] as { text: string }).text);
+
+  assert.deepEqual(parsed.correspondent, { id: 3, name: "American Express" });
+});
+
+test("enriches owner with username and storage_path with name", async () => {
+  const api = createLookupApi({
+    "/users/?page_size=1000": {
+      results: [{ id: 4, username: "jeb-tlb" }],
+    },
+    "/storage_paths/?page_size=1000": {
+      results: [{ id: 2, name: "Archive/Bills" }],
+    },
+  });
+
+  const result = await convertDocsWithNames(
+    createDocument({ owner: 4, storage_path: 2 }),
+    api
+  );
+  const parsed = JSON.parse((result.content[0] as { text: string }).text);
+
+  assert.deepEqual(parsed.owner, { id: 4, name: "jeb-tlb" });
+  assert.deepEqual(parsed.storage_path, { id: 2, name: "Archive/Bills" });
+});
+
+test("degrades owner to a bare-ID name when listing users is forbidden", async () => {
+  const api = {
+    request: async (path: string) => {
+      if (path.startsWith("/users/")) {
+        throw new Error("HTTP error! status: 403");
+      }
+      return { count: 0, next: null, results: [] };
+    },
+  } as unknown as PaperlessAPI;
+
+  const result = await convertDocsWithNames(createDocument({ owner: 4 }), api);
+  const parsed = JSON.parse((result.content[0] as { text: string }).text);
+
+  assert.deepEqual(parsed.owner, { id: 4, name: "4" });
 });

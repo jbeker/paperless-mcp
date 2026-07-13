@@ -125,6 +125,7 @@ const DOCUMENT_QUERY_BASE_ARGS_SHAPE = {
   storage_path: entityRef()
     .optional()
     .describe(entityRefDescription("storage_path")),
+  owner: entityRef().optional().describe(entityRefDescription("user", "Owner")),
   created__date__gte: z.string().optional(),
   created__date__lte: z.string().optional(),
   ordering: z.string().optional(),
@@ -171,6 +172,7 @@ export type BuildDocumentQueryArgs = {
   document_type?: number | string;
   tag?: number | string;
   storage_path?: number | string;
+  owner?: number | string;
   created__date__gte?: string;
   created__date__lte?: string;
   archive_serial_number?: number;
@@ -191,6 +193,7 @@ const FIRST_CLASS_QUERY_PARAM_MAP = {
   document_type: "document_type__id",
   tag: "tags__id",
   storage_path: "storage_path__id",
+  owner: "owner__id",
   created__date__gte: "created__date__gte",
   created__date__lte: "created__date__lte",
   archive_serial_number: "archive_serial_number",

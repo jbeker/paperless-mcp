@@ -302,6 +302,7 @@ interface DocumentQueryRefs {
   document_type?: EntityRef;
   tag?: EntityRef;
   storage_path?: EntityRef;
+  owner?: EntityRef;
 }
 
 /** Resolves the entity-reference filters shared by the document query tools. */
@@ -309,18 +310,21 @@ export async function resolveDocumentQueryRefs<T extends DocumentQueryRefs>(
   api: PaperlessAPI,
   args: T
 ): Promise<T> {
-  const [correspondent, document_type, tag, storage_path] = await Promise.all([
-    resolveEntityIdOrNull(api, "correspondent", args.correspondent),
-    resolveEntityIdOrNull(api, "document_type", args.document_type),
-    resolveEntityIdOrNull(api, "tag", args.tag),
-    resolveEntityIdOrNull(api, "storage_path", args.storage_path),
-  ]);
+  const [correspondent, document_type, tag, storage_path, owner] =
+    await Promise.all([
+      resolveEntityIdOrNull(api, "correspondent", args.correspondent),
+      resolveEntityIdOrNull(api, "document_type", args.document_type),
+      resolveEntityIdOrNull(api, "tag", args.tag),
+      resolveEntityIdOrNull(api, "storage_path", args.storage_path),
+      resolveEntityIdOrNull(api, "user", args.owner),
+    ]);
   return {
     ...args,
     ...(correspondent !== undefined ? { correspondent } : {}),
     ...(document_type !== undefined ? { document_type } : {}),
     ...(tag !== undefined ? { tag } : {}),
     ...(storage_path !== undefined ? { storage_path } : {}),
+    ...(owner !== undefined ? { owner } : {}),
   };
 }
 

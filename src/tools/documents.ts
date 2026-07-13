@@ -351,7 +351,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "list_documents",
-    "List and filter documents with pagination and common Paperless filters such as title search, correspondent, document type, tag, storage path, creation date, archive serial number, and simple custom field filters. Use 'query_documents' for full-text query, structured custom field conditions, or advanced documented /api/documents/ query parameters. The correspondent, document_type, tag, and storage_path filters accept numeric IDs or exact names; unknown or ambiguous names return an error listing candidates. Note: Document content is excluded from results by default. Use 'get_document_content' when you need the document text.",
+    "List and filter documents with pagination and common Paperless filters such as title search, correspondent, document type, tag, storage path, creation date, archive serial number, and simple custom field filters. Use 'query_documents' for full-text query, structured custom field conditions, or advanced documented /api/documents/ query parameters. The correspondent, document_type, tag, storage_path, and owner filters accept numeric IDs or exact names (owner takes a username); unknown or ambiguous names return an error listing candidates. Note: Document content is excluded from results by default. Use 'get_document_content' when you need the document text.",
     LIST_DOCUMENTS_ARGS_SHAPE,
     READ_ONLY,
     withErrorHandling(async (args, extra) => {

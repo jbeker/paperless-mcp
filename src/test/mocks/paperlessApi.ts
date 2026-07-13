@@ -13,6 +13,7 @@ function emptyPaginationResponse<T>(results: T[] = []) {
 
 export function createPaperlessApiMock(): PaperlessAPI {
   return {
+    request: async () => emptyPaginationResponse(),
     getCorrespondents: async () => emptyPaginationResponse(),
     getDocumentTypes: async () => emptyPaginationResponse(),
     getTags: async () => emptyPaginationResponse(),

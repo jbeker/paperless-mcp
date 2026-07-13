@@ -165,6 +165,7 @@ test("serializes first-class document filters using Paperless parameter names", 
       document_type: 4,
       tag: 5,
       storage_path: 6,
+      owner: 7,
       created__date__gte: "2024-01-01",
       created__date__lte: "2024-12-31",
       archive_serial_number: 99,
@@ -180,6 +181,7 @@ test("serializes first-class document filters using Paperless parameter names", 
   assert.equal(query.get("document_type__id"), "4");
   assert.equal(query.get("tags__id"), "5");
   assert.equal(query.get("storage_path__id"), "6");
+  assert.equal(query.get("owner__id"), "7");
   assert.equal(query.get("created__date__gte"), "2024-01-01");
   assert.equal(query.get("created__date__lte"), "2024-12-31");
   assert.equal(query.get("archive_serial_number"), "99");
@@ -367,10 +369,20 @@ function createDocumentApi(
     getCustomField: [],
   };
   const fieldMap = new Map(fields.map((field) => [field.id, field]));
+  const enhancerEndpoints = [
+    "/tags/",
+    "/correspondents/",
+    "/document_types/",
+    "/custom_fields/",
+    "/storage_paths/",
+    "/users/",
+  ];
   const api = {
     request: async (path: string) => {
       const endpoint = `${path.split("?")[0]}`;
-      const results = lookups[endpoint];
+      const results =
+        lookups[endpoint] ??
+        (enhancerEndpoints.includes(endpoint) ? [] : undefined);
       if (!results) throw new Error(`unexpected lookup request: ${path}`);
       return { count: results.length, next: null, results };
     },
@@ -663,6 +675,38 @@ describe("document lifecycle and insight tools", () => {
     });
 
     assert.deepEqual(deleted, [42]);
+  });
+
+  test("list_documents resolves an owner username to the owner__id filter", async () => {
+    const queries: string[] = [];
+    const api = {
+      request: async (path: string) => {
+        if (path.startsWith("/users/")) {
+          return {
+            count: 1,
+            next: null,
+            results: [{ id: 6, username: "jeb-tlb" }],
+          };
+        }
+        return { count: 0, next: null, results: [] };
+      },
+      getDocuments: async (query: string) => {
+        queries.push(query);
+        return { count: 0, next: null, previous: null, all: [], results: [] };
+      },
+    } as unknown as PaperlessAPI;
+
+    await withDocumentClient(api, async (client) => {
+      const result = (await client.callTool({
+        name: "list_documents",
+        arguments: { owner: "jeb-tlb" },
+      })) as CallToolResult;
+      assert.ok(!result.isError, parseToolText(result)?.error);
+    });
+
+    assert.equal(queries.length, 1);
+    const params = new URLSearchParams(queries[0].replace(/^\?/, ""));
+    assert.equal(params.get("owner__id"), "6");
   });
 
   test("get_document_suggestions enriches IDs with names", async () => {

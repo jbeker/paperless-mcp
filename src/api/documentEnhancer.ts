@@ -1,4 +1,5 @@
 import { CallToolResult } from "@modelcontextprotocol/sdk/types";
+import { getEntityLabelMap } from "../tools/utils/resolve";
 import { PaperlessAPI } from "./PaperlessAPI";
 import { Document, DocumentsResponse } from "./types";
 import { NamedItem } from "./utils";
@@ -12,12 +13,19 @@ interface CustomField {
 export interface EnhancedDocument
   extends Omit<
     Document,
-    "correspondent" | "document_type" | "tags" | "custom_fields"
+    | "correspondent"
+    | "document_type"
+    | "tags"
+    | "custom_fields"
+    | "storage_path"
+    | "owner"
   > {
   correspondent: NamedItem | null;
   document_type: NamedItem | null;
   tags: NamedItem[];
   custom_fields: CustomField[];
+  storage_path: NamedItem | null;
+  owner: NamedItem | null;
 }
 
 export async function convertDocsWithNames(
@@ -78,25 +86,25 @@ async function enhanceDocumentsArray(
     return [];
   }
 
-  const [correspondents, documentTypes, tags, customFields] = await Promise.all(
-    [
-      api.getCorrespondents(),
-      api.getDocumentTypes(),
-      api.getTags(),
-      api.getCustomFields(),
-    ]
-  );
-
-  const correspondentMap = new Map(
-    (correspondents.results || []).map((c) => [c.id, c.name])
-  );
-  const documentTypeMap = new Map(
-    (documentTypes.results || []).map((dt) => [dt.id, dt.name])
-  );
-  const tagMap = new Map((tags.results || []).map((tag) => [tag.id, tag.name]));
-  const customFieldMap = new Map(
-    (customFields.results || []).map((cf) => [cf.id, cf.name])
-  );
+  // The resolver's label maps fetch with page_size=1000 and follow pagination;
+  // fetching the bare list endpoints here truncated lookups to the server's
+  // default first page, rendering names as stringified IDs.
+  const [
+    correspondentMap,
+    documentTypeMap,
+    tagMap,
+    customFieldMap,
+    storagePathMap,
+    userMap,
+  ] = await Promise.all([
+    getEntityLabelMap(api, "correspondent"),
+    getEntityLabelMap(api, "document_type"),
+    getEntityLabelMap(api, "tag"),
+    getEntityLabelMap(api, "custom_field"),
+    getEntityLabelMap(api, "storage_path"),
+    // Non-admin tokens may not be allowed to list users; degrade to bare IDs.
+    getEntityLabelMap(api, "user").catch(() => new Map<number, string>()),
+  ]);
 
   return documents
     .map((doc) => {
@@ -118,6 +126,19 @@ async function enhanceDocumentsArray(
             id: doc.document_type,
             name:
               documentTypeMap.get(doc.document_type) || String(doc.document_type),
+          }
+        : null,
+      storage_path: doc.storage_path
+        ? {
+            id: doc.storage_path,
+            name:
+              storagePathMap.get(doc.storage_path) || String(doc.storage_path),
+          }
+        : null,
+      owner: doc.owner
+        ? {
+            id: doc.owner,
+            name: userMap.get(doc.owner) || String(doc.owner),
           }
         : null,
       tags: Array.isArray(doc.tags)
