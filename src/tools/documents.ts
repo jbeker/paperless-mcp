@@ -10,13 +10,14 @@ import {
   QUERY_DOCUMENTS_ARGS_SHAPE,
   SEARCH_DOCUMENTS_ARGS_SHAPE,
 } from "./utils/documentQuery";
-import { DESTRUCTIVE_BULK, READ_ONLY, UPDATE } from "./utils/annotations";
+import { DESTRUCTIVE, DESTRUCTIVE_BULK, READ_ONLY, UPDATE } from "./utils/annotations";
 import { withErrorHandling } from "./utils/middlewares";
 import { validateCustomFields } from "./utils/monetary";
 import {
   EntityRef,
   entityRef,
   entityRefDescription,
+  getEntityLabelMap,
   resolveDocumentQueryRefs,
   resolveEntityId,
   resolveEntityIdOrNull,
@@ -588,6 +589,98 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
       });
 
       return convertDocsWithNames(response, api);
+    })
+  );
+
+  server.tool(
+    "get_document_suggestions",
+    "Get Paperless's machine-learning suggestions for a document: likely correspondents, tags, document types, storage paths (each as {id, name}), and detected dates. Useful when classifying or filing a document.",
+    {
+      id: z.number().describe("The ID of the document to get suggestions for"),
+    },
+    READ_ONLY,
+    withErrorHandling(async (args, extra) => {
+      if (!api) throw new Error("Please configure API connection first");
+      const [suggestions, tagNames, correspondentNames, documentTypeNames, storagePathNames] =
+        await Promise.all([
+          api.getDocumentSuggestions(args.id),
+          getEntityLabelMap(api, "tag"),
+          getEntityLabelMap(api, "correspondent"),
+          getEntityLabelMap(api, "document_type"),
+          getEntityLabelMap(api, "storage_path"),
+        ]);
+      const named = (ids: number[], names: Map<number, string>) =>
+        ids.map((id) => ({ id, name: names.get(id) ?? String(id) }));
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              correspondents: named(suggestions.correspondents, correspondentNames),
+              tags: named(suggestions.tags, tagNames),
+              document_types: named(suggestions.document_types, documentTypeNames),
+              storage_paths: named(suggestions.storage_paths, storagePathNames),
+              dates: suggestions.dates,
+            }),
+          },
+        ],
+      };
+    })
+  );
+
+  server.tool(
+    "get_document_metadata",
+    "Get file-level metadata for a document: checksums, file sizes, MIME type, original and archive filenames, embedded file metadata, and detected language.",
+    {
+      id: z.number().describe("The ID of the document"),
+    },
+    READ_ONLY,
+    withErrorHandling(async (args, extra) => {
+      if (!api) throw new Error("Please configure API connection first");
+      const metadata = await api.getDocumentMetadata(args.id);
+      return {
+        content: [{ type: "text", text: JSON.stringify(metadata) }],
+      };
+    })
+  );
+
+  server.tool(
+    "get_next_asn",
+    "Get the next available archive serial number (ASN). Use when assigning archive_serial_number to a document.",
+    {},
+    READ_ONLY,
+    withErrorHandling(async () => {
+      if (!api) throw new Error("Please configure API connection first");
+      const nextAsn = await api.getNextAsn();
+      return {
+        content: [{ type: "text", text: JSON.stringify({ next_asn: nextAsn }) }],
+      };
+    })
+  );
+
+  server.tool(
+    "delete_document",
+    "⚠️ DESTRUCTIVE: Delete a document. The document is moved to the trash, where it can be restored with 'restore_from_trash' until the trash retention period expires or the trash is emptied.",
+    {
+      id: z.number().describe("The ID of the document to delete"),
+      confirm: z
+        .boolean()
+        .describe("Must be true to confirm this destructive operation"),
+    },
+    DESTRUCTIVE,
+    withErrorHandling(async (args, extra) => {
+      if (!api) throw new Error("Please configure API connection first");
+      if (!args.confirm) {
+        throw new Error(
+          "Confirmation required for destructive operation. Set confirm: true to proceed."
+        );
+      }
+      await api.deleteDocument(args.id);
+      return {
+        content: [
+          { type: "text", text: JSON.stringify({ status: "deleted" }) },
+        ],
+      };
     })
   );
 }

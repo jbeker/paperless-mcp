@@ -13,7 +13,8 @@ export type ResolvableKind =
   | "custom_field"
   | "user"
   | "group"
-  | "mail_account";
+  | "mail_account"
+  | "mail_rule";
 
 interface KindConfig {
   endpoint: string;
@@ -49,6 +50,11 @@ const KIND_CONFIG: Record<ResolvableKind, KindConfig> = {
     endpoint: "/mail_accounts/",
     labelField: "name",
     singular: "mail account",
+  },
+  mail_rule: {
+    endpoint: "/mail_rules/",
+    labelField: "name",
+    singular: "mail rule",
   },
 };
 
@@ -238,6 +244,15 @@ export async function resolveEntityIds(
   refs: EntityRef[]
 ): Promise<number[]> {
   return Promise.all(refs.map((ref) => resolveEntityId(api, kind, ref)));
+}
+
+/** Returns an id→label map for a kind, sharing the resolver's session cache. */
+export async function getEntityLabelMap(
+  api: PaperlessAPI,
+  kind: ResolvableKind
+): Promise<Map<number, string>> {
+  const entries = await loadEntries(api, kind);
+  return new Map(entries.map((entry) => [entry.id, entry.label]));
 }
 
 /** Resolves the users/groups arrays of a permissions block to numeric IDs. */

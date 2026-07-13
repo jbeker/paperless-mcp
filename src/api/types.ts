@@ -268,6 +268,180 @@ export interface Profile {
   has_usable_password?: boolean;
 }
 
+export interface DocumentSuggestions {
+  correspondents: number[];
+  tags: number[];
+  document_types: number[];
+  storage_paths: number[];
+  dates: string[];
+}
+
+export interface DocumentMetadata {
+  original_checksum: string;
+  original_size: number;
+  original_mime_type: string;
+  media_filename: string;
+  has_archive_version: boolean;
+  original_metadata: Record<string, unknown>;
+  archive_checksum: string;
+  archive_media_filename: string;
+  original_filename: string;
+  archive_size: number;
+  archive_metadata: Record<string, unknown>;
+  lang: string;
+}
+
+export type TaskStatus =
+  | "FAILURE"
+  | "PENDING"
+  | "RECEIVED"
+  | "RETRY"
+  | "REVOKED"
+  | "STARTED"
+  | "SUCCESS";
+
+export interface PaperlessTask {
+  id: number;
+  task_id: string;
+  task_name:
+    | "check_sanity"
+    | "consume_file"
+    | "index_optimize"
+    | "train_classifier"
+    | null;
+  task_file_name: string | null;
+  date_created: string | null;
+  date_done: string | null;
+  type: "auto_task" | "scheduled_task" | "manual_task";
+  status: TaskStatus;
+  result: string | null;
+  acknowledged: boolean;
+  related_document: string | null;
+  owner: number | null;
+}
+
+export interface AcknowledgeTasksResult {
+  result: number;
+}
+
+export interface SystemStatus {
+  pngx_version: string;
+  server_os: string;
+  install_type: string;
+  storage: Record<string, unknown>;
+  database: Record<string, unknown>;
+  tasks: Record<string, unknown>;
+  index: Record<string, unknown>;
+  classifier: Record<string, unknown>;
+  sanity_check: Record<string, unknown>;
+}
+
+export interface TrashRequest {
+  documents?: number[];
+  action: "restore" | "empty";
+}
+
+export interface WorkflowEmail {
+  id?: number | null;
+  subject: string;
+  body: string;
+  to: string;
+  include_document?: boolean;
+}
+
+export interface WorkflowWebhook {
+  id?: number | null;
+  url: string;
+  use_params?: boolean;
+  as_json?: boolean;
+  params?: unknown;
+  body?: string | null;
+  headers?: unknown;
+  include_document?: boolean;
+}
+
+export interface WorkflowTrigger {
+  id?: number | null;
+  sources?: number[];
+  type: number;
+  filter_path?: string | null;
+  filter_filename?: string | null;
+  filter_mailrule?: number | null;
+  matching_algorithm?: number;
+  match?: string;
+  is_insensitive?: boolean;
+  filter_has_tags?: number[];
+  filter_has_all_tags?: number[];
+  filter_has_not_tags?: number[];
+  filter_custom_field_query?: string | null;
+  filter_has_not_correspondents?: number[];
+  filter_has_not_document_types?: number[];
+  filter_has_not_storage_paths?: number[];
+  filter_has_correspondent?: number | null;
+  filter_has_document_type?: number | null;
+  filter_has_storage_path?: number | null;
+  schedule_offset_days?: number;
+  schedule_is_recurring?: boolean;
+  schedule_recurring_interval_days?: number;
+  schedule_date_field?: "added" | "created" | "modified" | "custom_field";
+  schedule_date_custom_field?: number | null;
+}
+
+export interface WorkflowAction {
+  id?: number | null;
+  type?: number;
+  assign_title?: string | null;
+  assign_tags?: Array<number | null>;
+  assign_correspondent?: number | null;
+  assign_document_type?: number | null;
+  assign_storage_path?: number | null;
+  assign_owner?: number | null;
+  assign_view_users?: number[];
+  assign_view_groups?: number[];
+  assign_change_users?: number[];
+  assign_change_groups?: number[];
+  assign_custom_fields?: number[];
+  assign_custom_fields_values?: Record<string, unknown> | null;
+  remove_all_tags?: boolean;
+  remove_tags?: number[];
+  remove_all_correspondents?: boolean;
+  remove_correspondents?: number[];
+  remove_all_document_types?: boolean;
+  remove_document_types?: number[];
+  remove_all_storage_paths?: boolean;
+  remove_storage_paths?: number[];
+  remove_custom_fields?: number[];
+  remove_all_custom_fields?: boolean;
+  remove_all_owners?: boolean;
+  remove_owners?: number[];
+  remove_all_permissions?: boolean;
+  remove_view_users?: number[];
+  remove_view_groups?: number[];
+  remove_change_users?: number[];
+  remove_change_groups?: number[];
+  email?: WorkflowEmail | null;
+  webhook?: WorkflowWebhook | null;
+}
+
+export interface Workflow {
+  id: number;
+  name: string;
+  order?: number;
+  enabled?: boolean;
+  triggers: WorkflowTrigger[];
+  actions: WorkflowAction[];
+}
+
+export interface WorkflowRequest {
+  name: string;
+  order?: number;
+  enabled?: boolean;
+  triggers: WorkflowTrigger[];
+  actions: WorkflowAction[];
+}
+
+export interface GetWorkflowsResponse extends PaginationResponse<Workflow> {}
+
 export interface BulkEditDocumentsResult {
   result: string;
 }

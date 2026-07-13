@@ -635,3 +635,71 @@ describe("name-to-ID resolution in document handlers", () => {
     assert.equal(calls.bulkEditDocuments.length, 0);
   });
 });
+
+describe("document lifecycle and insight tools", () => {
+  test("delete_document requires confirmation before calling the API", async () => {
+    const deleted: number[] = [];
+    const api = {
+      deleteDocument: async (id: number) => {
+        deleted.push(id);
+      },
+    } as unknown as PaperlessAPI;
+
+    await withDocumentClient(api, async (client) => {
+      const denied = (await client.callTool({
+        name: "delete_document",
+        arguments: { id: 42, confirm: false },
+      })) as CallToolResult;
+      assert.ok(denied.isError, "expected an error without confirmation");
+      assert.match(parseToolText(denied)?.error ?? "", /Confirmation required/);
+      assert.equal(deleted.length, 0);
+
+      const confirmed = (await client.callTool({
+        name: "delete_document",
+        arguments: { id: 42, confirm: true },
+      })) as CallToolResult;
+      assert.ok(!confirmed.isError);
+      assert.deepEqual(parseToolText(confirmed), { status: "deleted" });
+    });
+
+    assert.deepEqual(deleted, [42]);
+  });
+
+  test("get_document_suggestions enriches IDs with names", async () => {
+    const { api } = createDocumentApi([], {
+      "/tags/": [{ id: 3, name: "taxes" }],
+      "/correspondents/": [{ id: 7, name: "ACME" }],
+      "/document_types/": [{ id: 2, name: "Invoice" }],
+      "/storage_paths/": [],
+    });
+    (api as unknown as Record<string, unknown>).getDocumentSuggestions =
+      async (id: number) => {
+        assert.equal(id, 42);
+        return {
+          correspondents: [7],
+          tags: [3, 99],
+          document_types: [2],
+          storage_paths: [],
+          dates: ["2026-07-01"],
+        };
+      };
+
+    await withDocumentClient(api, async (client) => {
+      const result = (await client.callTool({
+        name: "get_document_suggestions",
+        arguments: { id: 42 },
+      })) as CallToolResult;
+      assert.ok(!result.isError, parseToolText(result)?.error);
+      assert.deepEqual(parseToolText(result), {
+        correspondents: [{ id: 7, name: "ACME" }],
+        tags: [
+          { id: 3, name: "taxes" },
+          { id: 99, name: "99" },
+        ],
+        document_types: [{ id: 2, name: "Invoice" }],
+        storage_paths: [],
+        dates: ["2026-07-01"],
+      });
+    });
+  });
+});

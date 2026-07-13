@@ -11,21 +11,30 @@ import {
   GetCorrespondentsResponse,
   GetCustomFieldsResponse,
   GetDocumentTypesResponse,
+  AcknowledgeTasksResult,
+  DocumentMetadata,
+  DocumentSuggestions,
   GetGroupsResponse,
   GetMailAccountsResponse,
   GetMailRulesResponse,
   GetStoragePathsResponse,
   GetUsersResponse,
+  GetWorkflowsResponse,
   MailAccount,
   MailRule,
   MintUploadRequest,
   MintUploadResponse,
   GetTagsResponse,
   Note,
+  PaperlessTask,
   Profile,
+  SystemStatus,
   Tag,
+  TrashRequest,
   UiSettingsResponse,
   User,
+  Workflow,
+  WorkflowRequest,
 } from "./types";
 import { headersToObject } from "./utils";
 
@@ -223,6 +232,22 @@ export class PaperlessAPI {
     return this.request<Document>(`/documents/${id}/`);
   }
 
+  async deleteDocument(id: number): Promise<void> {
+    return this.request<void>(`/documents/${id}/`, { method: "DELETE" });
+  }
+
+  async getDocumentSuggestions(id: number): Promise<DocumentSuggestions> {
+    return this.request<DocumentSuggestions>(`/documents/${id}/suggestions/`);
+  }
+
+  async getDocumentMetadata(id: number): Promise<DocumentMetadata> {
+    return this.request<DocumentMetadata>(`/documents/${id}/metadata/`);
+  }
+
+  async getNextAsn(): Promise<number> {
+    return this.request<number>("/documents/next_asn/");
+  }
+
   async updateDocument(id: number, data: Partial<Document>): Promise<Document> {
     return this.request<Document>(`/documents/${id}/`, {
       method: "PATCH",
@@ -299,6 +324,10 @@ export class PaperlessAPI {
   // Tag operations
   async getTags(): Promise<GetTagsResponse> {
     return this.request<GetTagsResponse>("/tags/");
+  }
+
+  async getTag(id: number): Promise<Tag> {
+    return this.request<Tag>(`/tags/${id}/`);
   }
 
   async createTag(data: Partial<Tag>): Promise<Tag> {
@@ -498,6 +527,76 @@ export class PaperlessAPI {
       ? `/storage_paths/?${queryString}`
       : "/storage_paths/";
     return this.request<GetStoragePathsResponse>(url);
+  }
+
+  // Task operations
+  async getTasks(queryString?: string): Promise<PaperlessTask[]> {
+    const url = queryString ? `/tasks/?${queryString}` : "/tasks/";
+    return this.request<PaperlessTask[]>(url);
+  }
+
+  async getTask(id: number): Promise<PaperlessTask> {
+    return this.request<PaperlessTask>(`/tasks/${id}/`);
+  }
+
+  async acknowledgeTasks(tasks: number[]): Promise<AcknowledgeTasksResult> {
+    return this.request<AcknowledgeTasksResult>("/tasks/acknowledge/", {
+      method: "POST",
+      body: JSON.stringify({ tasks }),
+    });
+  }
+
+  // System operations
+  async getStatistics(): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>("/statistics/");
+  }
+
+  async getSystemStatus(): Promise<SystemStatus> {
+    return this.request<SystemStatus>("/status/");
+  }
+
+  // Trash operations (response bodies are undocumented in the OpenAPI spec)
+  async getTrash(queryString?: string): Promise<Record<string, unknown>> {
+    const url = queryString ? `/trash/?${queryString}` : "/trash/";
+    return this.request<Record<string, unknown>>(url);
+  }
+
+  async editTrash(data: TrashRequest): Promise<Record<string, unknown>> {
+    return this.request<Record<string, unknown>>("/trash/", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Workflow operations
+  async getWorkflows(queryString?: string): Promise<GetWorkflowsResponse> {
+    const url = queryString ? `/workflows/?${queryString}` : "/workflows/";
+    return this.request<GetWorkflowsResponse>(url);
+  }
+
+  async getWorkflow(id: number): Promise<Workflow> {
+    return this.request<Workflow>(`/workflows/${id}/`);
+  }
+
+  async createWorkflow(data: WorkflowRequest): Promise<Workflow> {
+    return this.request<Workflow>("/workflows/", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateWorkflow(
+    id: number,
+    data: Partial<WorkflowRequest>
+  ): Promise<Workflow> {
+    return this.request<Workflow>(`/workflows/${id}/`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteWorkflow(id: number): Promise<void> {
+    return this.request<void>(`/workflows/${id}/`, { method: "DELETE" });
   }
 
   // Bulk object operations
