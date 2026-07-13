@@ -738,7 +738,7 @@ describe("document lifecycle and insight tools", () => {
         correspondents: [{ id: 7, name: "ACME" }],
         tags: [
           { id: 3, name: "taxes" },
-          { id: 99, name: "99" },
+          { id: 99, name: null },
         ],
         document_types: [{ id: 2, name: "Invoice" }],
         storage_paths: [],

@@ -246,12 +246,24 @@ export async function resolveEntityIds(
   return Promise.all(refs.map((ref) => resolveEntityId(api, kind, ref)));
 }
 
-/** Returns an id→label map for a kind, sharing the resolver's session cache. */
+/**
+ * Returns an id→label map for a kind, sharing the resolver's session cache.
+ * When idsToResolve is given and any of those IDs are absent from the cached
+ * table, the table is refetched once — so entities created (or made visible)
+ * after the cache was first populated still resolve.
+ */
 export async function getEntityLabelMap(
   api: PaperlessAPI,
-  kind: ResolvableKind
+  kind: ResolvableKind,
+  idsToResolve?: Iterable<number>
 ): Promise<Map<number, string>> {
-  const entries = await loadEntries(api, kind);
+  let entries = await loadEntries(api, kind);
+  if (idsToResolve) {
+    const known = new Set(entries.map((entry) => entry.id));
+    if ([...idsToResolve].some((id) => !known.has(id))) {
+      entries = await loadEntries(api, kind, true);
+    }
+  }
   return new Map(entries.map((entry) => [entry.id, entry.label]));
 }
 

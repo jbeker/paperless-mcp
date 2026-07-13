@@ -133,7 +133,7 @@ test("enriches owner with username and storage_path with name", async () => {
   assert.deepEqual(parsed.storage_path, { id: 2, name: "Archive/Bills" });
 });
 
-test("degrades owner to a bare-ID name when listing users is forbidden", async () => {
+test("degrades owner to a null name when listing users is forbidden", async () => {
   const api = {
     request: async (path: string) => {
       if (path.startsWith("/users/")) {
@@ -146,5 +146,38 @@ test("degrades owner to a bare-ID name when listing users is forbidden", async (
   const result = await convertDocsWithNames(createDocument({ owner: 4 }), api);
   const parsed = JSON.parse((result.content[0] as { text: string }).text);
 
-  assert.deepEqual(parsed.owner, { id: 4, name: "4" });
+  assert.deepEqual(parsed.owner, { id: 4, name: null });
+});
+
+test("resolves entities created after the label cache was first populated", async () => {
+  // The document type does not exist during the first convert (which fetches
+  // twice: initial load + one refetch on miss) and is created before the second.
+  let documentTypeFetches = 0;
+  const api = {
+    request: async (path: string) => {
+      if (path.startsWith("/document_types/")) {
+        documentTypeFetches++;
+        const results =
+          documentTypeFetches <= 2 ? [] : [{ id: 37, name: "Menu" }];
+        return { count: results.length, next: null, results };
+      }
+      return { count: 0, next: null, results: [] };
+    },
+  } as unknown as PaperlessAPI;
+
+  const first = await convertDocsWithNames(
+    createDocument({ document_type: 37 }),
+    api
+  );
+  const firstParsed = JSON.parse((first.content[0] as { text: string }).text);
+  assert.deepEqual(firstParsed.document_type, { id: 37, name: null });
+  assert.equal(documentTypeFetches, 2);
+
+  const second = await convertDocsWithNames(
+    createDocument({ document_type: 37 }),
+    api
+  );
+  const secondParsed = JSON.parse((second.content[0] as { text: string }).text);
+  assert.deepEqual(secondParsed.document_type, { id: 37, name: "Menu" });
+  assert.equal(documentTypeFetches, 3);
 });

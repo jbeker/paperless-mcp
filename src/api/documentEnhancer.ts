@@ -1,12 +1,20 @@
 import { CallToolResult } from "@modelcontextprotocol/sdk/types";
-import { getEntityLabelMap } from "../tools/utils/resolve";
+import {
+  getEntityLabelMap,
+  ResolvableKind,
+} from "../tools/utils/resolve";
 import { PaperlessAPI } from "./PaperlessAPI";
 import { Document, DocumentsResponse } from "./types";
-import { NamedItem } from "./utils";
+
+/** name is null when the ID is not resolvable (deleted, or not visible to this token). */
+export interface NamedRef {
+  id: number;
+  name: string | null;
+}
 
 interface CustomField {
   field: number;
-  name: string;
+  name: string | null;
   value: string | number | boolean | object | null;
 }
 
@@ -20,12 +28,12 @@ export interface EnhancedDocument
     | "storage_path"
     | "owner"
   > {
-  correspondent: NamedItem | null;
-  document_type: NamedItem | null;
-  tags: NamedItem[];
+  correspondent: NamedRef | null;
+  document_type: NamedRef | null;
+  tags: NamedRef[];
   custom_fields: CustomField[];
-  storage_path: NamedItem | null;
-  owner: NamedItem | null;
+  storage_path: NamedRef | null;
+  owner: NamedRef | null;
 }
 
 export async function convertDocsWithNames(
@@ -86,9 +94,31 @@ async function enhanceDocumentsArray(
     return [];
   }
 
-  // The resolver's label maps fetch with page_size=1000 and follow pagination;
-  // fetching the bare list endpoints here truncated lookups to the server's
-  // default first page, rendering names as stringified IDs.
+  const correspondentIds = new Set<number>();
+  const documentTypeIds = new Set<number>();
+  const tagIds = new Set<number>();
+  const customFieldIds = new Set<number>();
+  const storagePathIds = new Set<number>();
+  const ownerIds = new Set<number>();
+  for (const doc of documents) {
+    if (doc.correspondent) correspondentIds.add(doc.correspondent);
+    if (doc.document_type) documentTypeIds.add(doc.document_type);
+    if (doc.storage_path) storagePathIds.add(doc.storage_path);
+    if (doc.owner) ownerIds.add(doc.owner);
+    if (Array.isArray(doc.tags)) doc.tags.forEach((id) => tagIds.add(id));
+    if (Array.isArray(doc.custom_fields)) {
+      doc.custom_fields.forEach((cf) => customFieldIds.add(cf.field));
+    }
+  }
+
+  // The resolver's label maps fetch with page_size=1000, follow pagination,
+  // and refetch once when a requested ID is missing from the cached table —
+  // so names beyond the first page and entities created mid-session resolve.
+  const labelMap = (kind: ResolvableKind, ids: Set<number>) =>
+    ids.size === 0
+      ? Promise.resolve(new Map<number, string>())
+      : getEntityLabelMap(api, kind, ids);
+
   const [
     correspondentMap,
     documentTypeMap,
@@ -97,13 +127,13 @@ async function enhanceDocumentsArray(
     storagePathMap,
     userMap,
   ] = await Promise.all([
-    getEntityLabelMap(api, "correspondent"),
-    getEntityLabelMap(api, "document_type"),
-    getEntityLabelMap(api, "tag"),
-    getEntityLabelMap(api, "custom_field"),
-    getEntityLabelMap(api, "storage_path"),
-    // Non-admin tokens may not be allowed to list users; degrade to bare IDs.
-    getEntityLabelMap(api, "user").catch(() => new Map<number, string>()),
+    labelMap("correspondent", correspondentIds),
+    labelMap("document_type", documentTypeIds),
+    labelMap("tag", tagIds),
+    labelMap("custom_field", customFieldIds),
+    labelMap("storage_path", storagePathIds),
+    // Non-admin tokens may not be allowed to list users; degrade to null names.
+    labelMap("user", ownerIds).catch(() => new Map<number, string>()),
   ]);
 
   return documents
@@ -116,41 +146,37 @@ async function enhanceDocumentsArray(
       correspondent: doc.correspondent
         ? {
             id: doc.correspondent,
-            name:
-              correspondentMap.get(doc.correspondent) ||
-              String(doc.correspondent),
+            name: correspondentMap.get(doc.correspondent) ?? null,
           }
         : null,
       document_type: doc.document_type
         ? {
             id: doc.document_type,
-            name:
-              documentTypeMap.get(doc.document_type) || String(doc.document_type),
+            name: documentTypeMap.get(doc.document_type) ?? null,
           }
         : null,
       storage_path: doc.storage_path
         ? {
             id: doc.storage_path,
-            name:
-              storagePathMap.get(doc.storage_path) || String(doc.storage_path),
+            name: storagePathMap.get(doc.storage_path) ?? null,
           }
         : null,
       owner: doc.owner
         ? {
             id: doc.owner,
-            name: userMap.get(doc.owner) || String(doc.owner),
+            name: userMap.get(doc.owner) ?? null,
           }
         : null,
       tags: Array.isArray(doc.tags)
         ? doc.tags.map((tagId) => ({
             id: tagId,
-            name: tagMap.get(tagId) || String(tagId),
+            name: tagMap.get(tagId) ?? null,
           }))
         : doc.tags,
       custom_fields: Array.isArray(doc.custom_fields)
         ? doc.custom_fields.map((field) => ({
             field: field.field,
-            name: customFieldMap.get(field.field) || String(field.field),
+            name: customFieldMap.get(field.field) ?? null,
             value: field.value,
           }))
         : doc.custom_fields,

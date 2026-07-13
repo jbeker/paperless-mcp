@@ -601,16 +601,16 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
     READ_ONLY,
     withErrorHandling(async (args, extra) => {
       if (!api) throw new Error("Please configure API connection first");
-      const [suggestions, tagNames, correspondentNames, documentTypeNames, storagePathNames] =
+      const suggestions = await api.getDocumentSuggestions(args.id);
+      const [tagNames, correspondentNames, documentTypeNames, storagePathNames] =
         await Promise.all([
-          api.getDocumentSuggestions(args.id),
-          getEntityLabelMap(api, "tag"),
-          getEntityLabelMap(api, "correspondent"),
-          getEntityLabelMap(api, "document_type"),
-          getEntityLabelMap(api, "storage_path"),
+          getEntityLabelMap(api, "tag", suggestions.tags),
+          getEntityLabelMap(api, "correspondent", suggestions.correspondents),
+          getEntityLabelMap(api, "document_type", suggestions.document_types),
+          getEntityLabelMap(api, "storage_path", suggestions.storage_paths),
         ]);
       const named = (ids: number[], names: Map<number, string>) =>
-        ids.map((id) => ({ id, name: names.get(id) ?? String(id) }));
+        ids.map((id) => ({ id, name: names.get(id) ?? null }));
       return {
         content: [
           {
