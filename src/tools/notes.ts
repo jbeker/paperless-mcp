@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
 import { z } from "zod";
 import { PaperlessAPI } from "../api/PaperlessAPI";
 import { Note } from "../api/types";
+import { CREATE, DESTRUCTIVE, READ_ONLY } from "./utils/annotations";
 import { withErrorHandling } from "./utils/middlewares";
 
 function notesResult(notes: Note[]) {
@@ -22,6 +23,7 @@ export function registerNoteTools(server: McpServer, api: PaperlessAPI) {
     {
       id: z.number().describe("The document ID"),
     },
+    READ_ONLY,
     withErrorHandling(async (args) => {
       if (!api) throw new Error("Please configure API connection first");
       return notesResult(await api.getDocumentNotes(args.id));
@@ -35,6 +37,7 @@ export function registerNoteTools(server: McpServer, api: PaperlessAPI) {
       id: z.number().describe("The document ID"),
       note: z.string().min(1).describe("The note text to add"),
     },
+    CREATE,
     withErrorHandling(async (args) => {
       if (!api) throw new Error("Please configure API connection first");
       return notesResult(await api.createDocumentNote(args.id, args.note));
@@ -51,6 +54,7 @@ export function registerNoteTools(server: McpServer, api: PaperlessAPI) {
         .boolean()
         .describe("Must be true to confirm this destructive operation"),
     },
+    DESTRUCTIVE,
     withErrorHandling(async (args) => {
       if (!api) throw new Error("Please configure API connection first");
       if (!args.confirm) {

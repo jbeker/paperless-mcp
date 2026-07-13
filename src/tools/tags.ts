@@ -6,6 +6,7 @@ import {
   enhanceMatchingAlgorithm,
   enhanceMatchingAlgorithmArray,
 } from "../api/utils";
+import { CREATE, DESTRUCTIVE, DESTRUCTIVE_BULK, READ_ONLY, UPDATE } from "./utils/annotations";
 import { withErrorHandling } from "./utils/middlewares";
 import { buildQueryString } from "./utils/queryString";
 import {
@@ -28,6 +29,7 @@ export function registerTagTools(server: McpServer, api: PaperlessAPI) {
       name__istartswith: z.string().optional(),
       ordering: z.string().optional(),
     },
+    READ_ONLY,
     withErrorHandling(async (args = {}) => {
       if (!api) throw new Error("Please configure API connection first");
       const queryString = buildQueryString(args);
@@ -69,6 +71,7 @@ export function registerTagTools(server: McpServer, api: PaperlessAPI) {
         .optional()
         .describe(MATCHING_ALGORITHM_DESCRIPTION),
     },
+    CREATE,
     withErrorHandling(async (args, extra) => {
       if (!api) throw new Error("Please configure API connection first");
       const tag = await api.createTag(args);
@@ -103,6 +106,7 @@ export function registerTagTools(server: McpServer, api: PaperlessAPI) {
         .optional()
         .describe(MATCHING_ALGORITHM_DESCRIPTION),
     },
+    UPDATE,
     withErrorHandling(async (args, extra) => {
       if (!api) throw new Error("Please configure API connection first");
       const tag = await api.updateTag(args.id, args);
@@ -127,6 +131,7 @@ export function registerTagTools(server: McpServer, api: PaperlessAPI) {
         .boolean()
         .describe("Must be true to confirm this destructive operation"),
     },
+    DESTRUCTIVE,
     withErrorHandling(async (args, extra) => {
       if (!api) throw new Error("Please configure API connection first");
       if (!args.confirm) {
@@ -183,6 +188,7 @@ export function registerTagTools(server: McpServer, api: PaperlessAPI) {
         .optional(),
       merge: z.boolean().optional(),
     },
+    DESTRUCTIVE_BULK,
     withErrorHandling(async (args, extra) => {
       if (!api) throw new Error("Please configure API connection first");
       if (args.operation === "delete" && !args.confirm) {

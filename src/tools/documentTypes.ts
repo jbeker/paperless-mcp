@@ -6,6 +6,7 @@ import {
   enhanceMatchingAlgorithm,
   enhanceMatchingAlgorithmArray,
 } from "../api/utils";
+import { CREATE, DESTRUCTIVE, DESTRUCTIVE_BULK, READ_ONLY, UPDATE } from "./utils/annotations";
 import { withErrorHandling } from "./utils/middlewares";
 import { buildQueryString } from "./utils/queryString";
 import {
@@ -31,6 +32,7 @@ export function registerDocumentTypeTools(
       name__istartswith: z.string().optional(),
       ordering: z.string().optional(),
     },
+    READ_ONLY,
     withErrorHandling(async (args = {}, extra) => {
       if (!api) throw new Error("Please configure API connection first");
       const queryString = buildQueryString(args);
@@ -58,6 +60,7 @@ export function registerDocumentTypeTools(
     "get_document_type",
     "Get a specific document type by ID with full details including matching rules.",
     { id: z.number() },
+    READ_ONLY,
     withErrorHandling(async (args, extra) => {
       if (!api) throw new Error("Please configure API connection first");
       const response = await api.request(`/document_types/${args.id}/`);
@@ -82,6 +85,7 @@ export function registerDocumentTypeTools(
         .optional()
         .describe(MATCHING_ALGORITHM_DESCRIPTION),
     },
+    CREATE,
     withErrorHandling(async (args, extra) => {
       if (!api) throw new Error("Please configure API connection first");
       const response = await api.createDocumentType(args);
@@ -107,6 +111,7 @@ export function registerDocumentTypeTools(
         .optional()
         .describe(MATCHING_ALGORITHM_DESCRIPTION),
     },
+    UPDATE,
     withErrorHandling(async (args, extra) => {
       if (!api) throw new Error("Please configure API connection first");
       const { id, ...payloadWithoutId } = args;
@@ -127,6 +132,7 @@ export function registerDocumentTypeTools(
         .boolean()
         .describe("Must be true to confirm this destructive operation"),
     },
+    DESTRUCTIVE,
     withErrorHandling(async (args, extra) => {
       if (!api) throw new Error("Please configure API connection first");
       if (!args.confirm) {
@@ -182,6 +188,7 @@ export function registerDocumentTypeTools(
         .optional(),
       merge: z.boolean().optional(),
     },
+    DESTRUCTIVE_BULK,
     withErrorHandling(async (args, extra) => {
       if (!api) throw new Error("Please configure API connection first");
       if (args.operation === "delete" && !args.confirm) {

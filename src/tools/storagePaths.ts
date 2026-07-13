@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
 import { z } from "zod";
 import { PaperlessAPI } from "../api/PaperlessAPI";
 import { enhanceMatchingAlgorithmArray } from "../api/utils";
+import { READ_ONLY } from "./utils/annotations";
 import { withErrorHandling } from "./utils/middlewares";
 import { buildQueryString } from "./utils/queryString";
 
@@ -16,6 +17,7 @@ export function registerStoragePathTools(server: McpServer, api: PaperlessAPI) {
       name__iexact: z.string().optional(),
       ordering: z.string().optional(),
     },
+    READ_ONLY,
     withErrorHandling(async (args = {}) => {
       if (!api) throw new Error("Please configure API connection first");
       const queryString = buildQueryString(args);

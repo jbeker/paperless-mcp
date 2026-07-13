@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
 import { z } from "zod";
 import { PaperlessAPI } from "../api/PaperlessAPI";
 import { User } from "../api/types";
+import { READ_ONLY } from "./utils/annotations";
 import { withErrorHandling } from "./utils/middlewares";
 import { buildQueryString } from "./utils/queryString";
 
@@ -10,6 +11,7 @@ export function registerUserTools(server: McpServer, api: PaperlessAPI) {
     "who_am_i",
     "Return the identity of the user whose API token this MCP connection uses: id, username, name, email, group memberships, and staff/superuser/active flags. Documents uploaded or owned via this connection belong to this user. Useful for 'assign to me' or 'my documents' workflows.",
     {},
+    READ_ONLY,
     withErrorHandling(async () => {
       if (!api) throw new Error("Please configure API connection first");
       const uiSettings = await api.getUiSettings();
@@ -87,6 +89,7 @@ export function registerUserTools(server: McpServer, api: PaperlessAPI) {
       username__iexact: z.string().optional(),
       ordering: z.string().optional(),
     },
+    READ_ONLY,
     withErrorHandling(async (args = {}) => {
       if (!api) throw new Error("Please configure API connection first");
       const queryString = buildQueryString(args);
@@ -107,6 +110,7 @@ export function registerUserTools(server: McpServer, api: PaperlessAPI) {
       name__iexact: z.string().optional(),
       ordering: z.string().optional(),
     },
+    READ_ONLY,
     withErrorHandling(async (args = {}) => {
       if (!api) throw new Error("Please configure API connection first");
       const queryString = buildQueryString(args);

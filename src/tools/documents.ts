@@ -10,6 +10,7 @@ import {
   QUERY_DOCUMENTS_ARGS_SHAPE,
   SEARCH_DOCUMENTS_ARGS_SHAPE,
 } from "./utils/documentQuery";
+import { DESTRUCTIVE_BULK, READ_ONLY, UPDATE } from "./utils/annotations";
 import { withErrorHandling } from "./utils/middlewares";
 import { validateCustomFields } from "./utils/monetary";
 import {
@@ -244,6 +245,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
           "Must be true when method is 'delete' to confirm destructive operation"
         ),
     },
+    DESTRUCTIVE_BULK,
     withErrorHandling(async (args, extra) => {
       if (!api) throw new Error("Please configure API connection first");
       if (args.method === "delete" && !args.confirm) {
@@ -350,6 +352,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
     "list_documents",
     "List and filter documents with pagination and common Paperless filters such as title search, correspondent, document type, tag, storage path, creation date, archive serial number, and simple custom field filters. Use 'query_documents' for full-text query, structured custom field conditions, or advanced documented /api/documents/ query parameters. The correspondent, document_type, tag, and storage_path filters accept numeric IDs or exact names; unknown or ambiguous names return an error listing candidates. Note: Document content is excluded from results by default. Use 'get_document_content' when you need the document text.",
     LIST_DOCUMENTS_ARGS_SHAPE,
+    READ_ONLY,
     withErrorHandling(async (args, extra) => {
       if (!api) throw new Error("Please configure API connection first");
       return executeDocumentQuery(api, args);
@@ -360,6 +363,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
     "query_documents",
     "Query documents using the full-text query engine plus structured Paperless filters. Use this for complex filtering, custom field conditions, or any documented /api/documents/ query parameters that are not exposed as first-class arguments. Prefer the dedicated top-level arguments where available. custom_field_query supports [field_name_or_id, operator, value] leaves or ['AND'|'OR', [clause1, clause2]] groups. Note: Document content is excluded from results by default. Use 'get_document_content' when you need the document text.",
     QUERY_DOCUMENTS_ARGS_SHAPE,
+    READ_ONLY,
     withErrorHandling(async (args, extra) => {
       if (!api) throw new Error("Please configure API connection first");
       return executeDocumentQuery(api, args);
@@ -372,6 +376,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
     {
       id: z.number(),
     },
+    READ_ONLY,
     withErrorHandling(async (args, extra) => {
       if (!api) throw new Error("Please configure API connection first");
       const doc = await api.getDocument(args.id);
@@ -385,6 +390,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
     {
       id: z.number(),
     },
+    READ_ONLY,
     withErrorHandling(async (args, extra) => {
       if (!api) throw new Error("Please configure API connection first");
       const doc = await api.getDocument(args.id);
@@ -407,6 +413,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
     "search_documents",
     "Deprecated compatibility wrapper for full-text document search. Use 'query_documents' with the 'query' argument for new integrations. Note: Document content is excluded from results by default. Use 'get_document_content' to retrieve content when needed.",
     SEARCH_DOCUMENTS_ARGS_SHAPE,
+    READ_ONLY,
     withErrorHandling(async (args, extra) => {
       if (!api) throw new Error("Please configure API connection first");
       return executeDocumentQuery(api, args);
@@ -420,6 +427,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
       id: z.number().int().positive(),
       original: z.boolean().optional(),
     },
+    READ_ONLY,
     withErrorHandling(async (args, extra) => {
       if (!api) throw new Error("Please configure API connection first");
       const uri = buildDocumentResourceUri(args.id, {
@@ -449,6 +457,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
     {
       id: z.number().int().positive(),
     },
+    READ_ONLY,
     withErrorHandling(async (args, extra) => {
       if (!api) throw new Error("Please configure API connection first");
       return {
@@ -528,6 +537,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
         .optional()
         .describe("Array of custom field values to assign"),
     },
+    UPDATE,
     withErrorHandling(async (args, extra) => {
       if (!api) throw new Error("Please configure API connection first");
       const {
