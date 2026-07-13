@@ -12,6 +12,16 @@ import {
 } from "./utils/documentQuery";
 import { withErrorHandling } from "./utils/middlewares";
 import { validateCustomFields } from "./utils/monetary";
+import {
+  EntityRef,
+  entityRef,
+  entityRefDescription,
+  resolveDocumentQueryRefs,
+  resolveEntityId,
+  resolveEntityIdOrNull,
+  resolveEntityIds,
+  resolveUserGroupRefs,
+} from "./utils/resolve";
 import { resolveSelectCustomFieldValues } from "./utils/selectFields";
 import { CUSTOM_FIELD_VALUE_DESCRIPTION } from "./utils/descriptions";
 import {
@@ -90,14 +100,54 @@ async function executeDocumentQuery(
   api: PaperlessAPI,
   args: BuildDocumentQueryArgs
 ) {
-  const docsResponse = await api.getDocuments(buildDocumentQueryString(args));
+  const resolvedArgs = await resolveDocumentQueryRefs(api, args);
+  const docsResponse = await api.getDocuments(
+    buildDocumentQueryString(resolvedArgs)
+  );
   return convertDocsWithNames(docsResponse, api);
+}
+
+interface BulkPermissionsArg {
+  owner?: EntityRef | null;
+  set_permissions?: {
+    view: { users: EntityRef[]; groups: EntityRef[] };
+    change: { users: EntityRef[]; groups: EntityRef[] };
+  };
+  merge?: boolean;
+}
+
+async function resolveBulkPermissions(
+  api: PaperlessAPI,
+  permissions: BulkPermissionsArg | undefined
+) {
+  if (!permissions) return undefined;
+  const [owner, view, change] = await Promise.all([
+    resolveEntityIdOrNull(api, "user", permissions.owner),
+    permissions.set_permissions
+      ? resolveUserGroupRefs(api, permissions.set_permissions.view)
+      : undefined,
+    permissions.set_permissions
+      ? resolveUserGroupRefs(api, permissions.set_permissions.change)
+      : undefined,
+  ]);
+  return {
+    ...(owner !== undefined ? { owner } : {}),
+    ...(view && change
+      ? {
+          set_permissions: {
+            view: { users: view.users ?? [], groups: view.groups ?? [] },
+            change: { users: change.users ?? [], groups: change.groups ?? [] },
+          },
+        }
+      : {}),
+    ...(permissions.merge !== undefined ? { merge: permissions.merge } : {}),
+  };
 }
 
 export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
   server.tool(
     "bulk_edit_documents",
-    "Perform bulk operations on multiple documents. Note: 'remove_tag' removes a tag from specific documents (tag remains in system), while 'delete_tag' permanently deletes a tag from the entire system. ⚠️ WARNING: 'delete' method permanently deletes documents and requires confirmation.",
+    "Perform bulk operations on multiple documents. Entity references (correspondent, document type, tags, storage path, custom fields, owner, permission users/groups) accept numeric IDs or exact names. Note: 'remove_tag' removes a tag from specific documents (tag remains in system), while 'delete_tag' permanently deletes a tag from the entire system. ⚠️ WARNING: 'delete' method permanently deletes documents and requires confirmation.",
     {
       documents: z.array(z.number()),
       method: z.enum([
@@ -116,16 +166,28 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
         "rotate",
         "delete_pages",
       ]),
-      correspondent: z.number().optional(),
-      document_type: z.number().optional(),
-      storage_path: z.number().optional(),
-      tag: z.number().optional(),
-      add_tags: z.array(z.number()).optional().transform(arrayNotEmpty),
-      remove_tags: z.array(z.number()).optional().transform(arrayNotEmpty),
+      correspondent: entityRef()
+        .optional()
+        .describe(entityRefDescription("correspondent")),
+      document_type: entityRef()
+        .optional()
+        .describe(entityRefDescription("document_type")),
+      storage_path: entityRef()
+        .optional()
+        .describe(entityRefDescription("storage_path")),
+      tag: entityRef().optional().describe(entityRefDescription("tag")),
+      add_tags: z
+        .array(entityRef().describe(entityRefDescription("tag")))
+        .optional()
+        .transform(arrayNotEmpty),
+      remove_tags: z
+        .array(entityRef().describe(entityRefDescription("tag")))
+        .optional()
+        .transform(arrayNotEmpty),
       add_custom_fields: z
         .array(
           z.object({
-            field: z.number(),
+            field: entityRef().describe(entityRefDescription("custom_field")),
             value: z.union([
               z.string(),
               z.number(),
@@ -138,21 +200,32 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
         .optional()
         .transform(arrayNotEmpty),
       remove_custom_fields: z
-        .array(z.number())
+        .array(entityRef().describe(entityRefDescription("custom_field")))
         .optional()
         .transform(arrayNotEmpty),
       permissions: z
         .object({
-          owner: z.number().nullable().optional(),
+          owner: entityRef()
+            .nullable()
+            .optional()
+            .describe(entityRefDescription("user", "Owner")),
           set_permissions: z
             .object({
               view: z.object({
-                users: z.array(z.number()),
-                groups: z.array(z.number()),
+                users: z.array(
+                  entityRef().describe(entityRefDescription("user"))
+                ),
+                groups: z.array(
+                  entityRef().describe(entityRefDescription("group"))
+                ),
               }),
               change: z.object({
-                users: z.array(z.number()),
-                groups: z.array(z.number()),
+                users: z.array(
+                  entityRef().describe(entityRefDescription("user"))
+                ),
+                groups: z.array(
+                  entityRef().describe(entityRefDescription("group"))
+                ),
               }),
             })
             .optional(),
@@ -178,12 +251,75 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
           "Confirmation required for destructive operation. Set confirm: true to proceed."
         );
       }
-      const { documents, method, add_custom_fields, confirm, ...parameters } = args;
+      const {
+        documents,
+        method,
+        add_custom_fields,
+        confirm,
+        correspondent: correspondentRef,
+        document_type: documentTypeRef,
+        storage_path: storagePathRef,
+        tag: tagRef,
+        add_tags: addTagsRef,
+        remove_tags: removeTagsRef,
+        remove_custom_fields: removeCustomFieldsRef,
+        permissions: permissionsRef,
+        ...passthrough
+      } = args;
 
-      validateCustomFields(add_custom_fields);
+      const [
+        correspondent,
+        document_type,
+        storage_path,
+        tag,
+        add_tags,
+        remove_tags,
+        remove_custom_fields,
+        addCustomFieldsResolved,
+        permissions,
+      ] = await Promise.all([
+        correspondentRef === undefined
+          ? undefined
+          : resolveEntityId(api, "correspondent", correspondentRef),
+        documentTypeRef === undefined
+          ? undefined
+          : resolveEntityId(api, "document_type", documentTypeRef),
+        storagePathRef === undefined
+          ? undefined
+          : resolveEntityId(api, "storage_path", storagePathRef),
+        tagRef === undefined ? undefined : resolveEntityId(api, "tag", tagRef),
+        addTagsRef ? resolveEntityIds(api, "tag", addTagsRef) : undefined,
+        removeTagsRef ? resolveEntityIds(api, "tag", removeTagsRef) : undefined,
+        removeCustomFieldsRef
+          ? resolveEntityIds(api, "custom_field", removeCustomFieldsRef)
+          : undefined,
+        add_custom_fields
+          ? Promise.all(
+              add_custom_fields.map(async (cf) => ({
+                ...cf,
+                field: await resolveEntityId(api, "custom_field", cf.field),
+              }))
+            )
+          : undefined,
+        resolveBulkPermissions(api, permissionsRef),
+      ]);
+
+      const parameters = {
+        ...passthrough,
+        ...(correspondent !== undefined ? { correspondent } : {}),
+        ...(document_type !== undefined ? { document_type } : {}),
+        ...(storage_path !== undefined ? { storage_path } : {}),
+        ...(tag !== undefined ? { tag } : {}),
+        ...(add_tags !== undefined ? { add_tags } : {}),
+        ...(remove_tags !== undefined ? { remove_tags } : {}),
+        ...(remove_custom_fields !== undefined ? { remove_custom_fields } : {}),
+        ...(permissions !== undefined ? { permissions } : {}),
+      };
+
+      validateCustomFields(addCustomFieldsResolved);
       const resolvedCustomFields = await resolveSelectCustomFieldValues(
         api,
-        add_custom_fields,
+        addCustomFieldsResolved,
         "stored"
       );
 
@@ -212,7 +348,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "list_documents",
-    "List and filter documents with pagination and common Paperless filters such as title search, correspondent, document type, tag, storage path, creation date, archive serial number, and simple custom field filters. Use 'query_documents' for full-text query, structured custom field conditions, or advanced documented /api/documents/ query parameters. IMPORTANT: For queries like 'the last 3 contributions' or when searching by tag, correspondent, document type, or storage path, first use the relevant lookup tool to find the correct ID. Note: Document content is excluded from results by default. Use 'get_document_content' when you need the document text.",
+    "List and filter documents with pagination and common Paperless filters such as title search, correspondent, document type, tag, storage path, creation date, archive serial number, and simple custom field filters. Use 'query_documents' for full-text query, structured custom field conditions, or advanced documented /api/documents/ query parameters. The correspondent, document_type, tag, and storage_path filters accept numeric IDs or exact names; unknown or ambiguous names return an error listing candidates. Note: Document content is excluded from results by default. Use 'get_document_content' when you need the document text.",
     LIST_DOCUMENTS_ARGS_SHAPE,
     withErrorHandling(async (args, extra) => {
       if (!api) throw new Error("Please configure API connection first");
@@ -334,7 +470,7 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "update_document",
-    "Update a specific document with new values. This tool allows you to modify any document field including title, correspondent, document type, storage path, tags, custom fields, and more. Only the fields you specify will be updated.",
+    "Update a specific document with new values. This tool allows you to modify any document field including title, correspondent, document type, storage path, tags, custom fields, and more. Correspondent, document type, storage path, tags, owner, and custom field references accept numeric IDs or exact names. Only the fields you specify will be updated.",
     {
       id: z.number().describe("The ID of the document to update"),
       title: z
@@ -342,25 +478,22 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
         .max(128)
         .optional()
         .describe("The new title for the document (max 128 characters)"),
-      correspondent: z
-        .number()
+      correspondent: entityRef()
         .nullable()
         .optional()
-        .describe("The ID of the correspondent to assign"),
-      document_type: z
-        .number()
+        .describe(entityRefDescription("correspondent", "Correspondent to assign")),
+      document_type: entityRef()
         .nullable()
         .optional()
-        .describe("The ID of the document type to assign"),
-      storage_path: z
-        .number()
+        .describe(entityRefDescription("document_type", "Document type to assign")),
+      storage_path: entityRef()
         .nullable()
         .optional()
-        .describe("The ID of the storage path to assign"),
+        .describe(entityRefDescription("storage_path", "Storage path to assign")),
       tags: z
-        .array(z.number())
+        .array(entityRef().describe(entityRefDescription("tag")))
         .optional()
-        .describe("Array of tag IDs to assign to the document"),
+        .describe("Tags to assign to the document (numeric IDs or exact names)"),
       content: z
         .string()
         .optional()
@@ -373,15 +506,14 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
         .number()
         .optional()
         .describe("The archive serial number (0-4294967295)"),
-      owner: z
-        .number()
+      owner: entityRef()
         .nullable()
         .optional()
-        .describe("The ID of the user who owns the document"),
+        .describe(entityRefDescription("user", "Owner of the document")),
       custom_fields: z
         .array(
           z.object({
-            field: z.number().describe("The custom field ID"),
+            field: entityRef().describe(entityRefDescription("custom_field")),
             value: z
               .union([
                 z.string(),
@@ -398,16 +530,52 @@ export function registerDocumentTools(server: McpServer, api: PaperlessAPI) {
     },
     withErrorHandling(async (args, extra) => {
       if (!api) throw new Error("Please configure API connection first");
-      const { id, ...updateData } = args;
+      const {
+        id,
+        correspondent: correspondentRef,
+        document_type: documentTypeRef,
+        storage_path: storagePathRef,
+        tags: tagsRef,
+        owner: ownerRef,
+        custom_fields: customFieldsRef,
+        ...updateData
+      } = args;
 
-      validateCustomFields(updateData.custom_fields);
-      updateData.custom_fields = await resolveSelectCustomFieldValues(
+      const [correspondent, document_type, storage_path, tags, owner, custom_fields] =
+        await Promise.all([
+          resolveEntityIdOrNull(api, "correspondent", correspondentRef),
+          resolveEntityIdOrNull(api, "document_type", documentTypeRef),
+          resolveEntityIdOrNull(api, "storage_path", storagePathRef),
+          tagsRef ? resolveEntityIds(api, "tag", tagsRef) : undefined,
+          resolveEntityIdOrNull(api, "user", ownerRef),
+          customFieldsRef
+            ? Promise.all(
+                customFieldsRef.map(async (cf) => ({
+                  ...cf,
+                  field: await resolveEntityId(api, "custom_field", cf.field),
+                }))
+              )
+            : undefined,
+        ]);
+
+      validateCustomFields(custom_fields);
+      const resolvedCustomFields = await resolveSelectCustomFieldValues(
         api,
-        updateData.custom_fields,
+        custom_fields,
         "index"
       );
 
-      const response = await api.updateDocument(id, updateData);
+      const response = await api.updateDocument(id, {
+        ...updateData,
+        ...(correspondent !== undefined ? { correspondent } : {}),
+        ...(document_type !== undefined ? { document_type } : {}),
+        ...(storage_path !== undefined ? { storage_path } : {}),
+        ...(tags !== undefined ? { tags } : {}),
+        ...(owner !== undefined ? { owner } : {}),
+        ...(resolvedCustomFields !== undefined
+          ? { custom_fields: resolvedCustomFields }
+          : {}),
+      });
 
       return convertDocsWithNames(response, api);
     })

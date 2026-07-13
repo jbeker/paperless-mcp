@@ -2,6 +2,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp";
 import { z } from "zod";
 import { PaperlessAPI } from "../api/PaperlessAPI";
 import { withErrorHandling } from "./utils/middlewares";
+import {
+  entityRef,
+  entityRefDescription,
+  resolveEntityId,
+  resolveEntityIds,
+} from "./utils/resolve";
 
 export function registerUploadProxyTools(server: McpServer, api: PaperlessAPI) {
   server.tool(
@@ -13,12 +19,18 @@ export function registerUploadProxyTools(server: McpServer, api: PaperlessAPI) {
       "curl -sf -X POST -F 'document=@FILE.pdf' '<upload_url>'. " +
       "The URL expires (default 15 minutes) and is consumed by the first upload attempt. " +
       "The document will be owned by the user whose token this MCP connection uses. " +
-      "IMPORTANT: Use the lookup tools first to resolve correspondent, document_type, and tag names to IDs.",
+      "Correspondent, document type, and tags accept numeric IDs or exact names.",
     {
       title: z.string().optional().describe("Document title set at upload"),
-      correspondent: z.number().int().optional().describe("Paperless correspondent ID"),
-      document_type: z.number().int().optional().describe("Paperless document type ID"),
-      tags: z.array(z.number().int()).optional().describe("Paperless tag IDs"),
+      correspondent: entityRef()
+        .optional()
+        .describe(entityRefDescription("correspondent")),
+      document_type: entityRef()
+        .optional()
+        .describe(entityRefDescription("document_type")),
+      tags: z
+        .array(entityRef().describe(entityRefDescription("tag")))
+        .optional(),
       created: z.string().optional().describe("Document creation date, YYYY-MM-DD"),
       max_bytes: z
         .number()
@@ -44,7 +56,28 @@ export function registerUploadProxyTools(server: McpServer, api: PaperlessAPI) {
         );
       }
 
-      const response = await api.mintUploadUrl(proxyUrl, args);
+      const {
+        correspondent: correspondentRef,
+        document_type: documentTypeRef,
+        tags: tagsRef,
+        ...rest
+      } = args;
+      const [correspondent, document_type, tags] = await Promise.all([
+        correspondentRef === undefined
+          ? undefined
+          : resolveEntityId(api, "correspondent", correspondentRef),
+        documentTypeRef === undefined
+          ? undefined
+          : resolveEntityId(api, "document_type", documentTypeRef),
+        tagsRef ? resolveEntityIds(api, "tag", tagsRef) : undefined,
+      ]);
+
+      const response = await api.mintUploadUrl(proxyUrl, {
+        ...rest,
+        ...(correspondent !== undefined ? { correspondent } : {}),
+        ...(document_type !== undefined ? { document_type } : {}),
+        ...(tags !== undefined ? { tags } : {}),
+      });
       return {
         content: [{ type: "text", text: JSON.stringify(response) }],
       };

@@ -216,3 +216,64 @@ test("mail rule write tools pass through payloads", async () => {
     ["delete", 3],
   ]);
 });
+
+test("mail rule tools resolve account, tag, correspondent, and owner names to IDs", async () => {
+  const calls: unknown[] = [];
+  const lookups: Record<string, Array<Record<string, unknown>>> = {
+    "/mail_accounts/": [{ id: 4, name: "Family Gmail" }],
+    "/tags/": [{ id: 8, name: "invoices" }],
+    "/correspondents/": [{ id: 6, name: "Power Co" }],
+    "/users/": [{ id: 2, username: "jeremy" }],
+  };
+  const api = {
+    request: async (path: string) => {
+      const results = lookups[path.split("?")[0]];
+      if (!results) throw new Error(`unexpected lookup request: ${path}`);
+      return { count: results.length, next: null, results };
+    },
+    createMailRule: async (data: unknown) => {
+      calls.push(["create", data]);
+      return { id: 9, ...(data as object) };
+    },
+    updateMailRule: async (id: number, data: unknown) => {
+      calls.push(["update", id, data]);
+      return { id, ...(data as object) };
+    },
+  } as unknown as PaperlessAPI;
+
+  await withMailClient(api, async (client) => {
+    const created = (await client.callTool({
+      name: "create_mail_rule",
+      arguments: {
+        name: "Invoices",
+        account: "Family Gmail",
+        folder: "INBOX",
+        assign_tags: ["invoices", 15],
+        assign_correspondent: "power co",
+        owner: "jeremy",
+      },
+    })) as CallToolResult;
+    assert.ok(!created.isError, parseToolText(created)?.error);
+
+    const updated = (await client.callTool({
+      name: "update_mail_rule",
+      arguments: { id: 9, account: "family gmail" },
+    })) as CallToolResult;
+    assert.ok(!updated.isError, parseToolText(updated)?.error);
+  });
+
+  assert.deepEqual(calls, [
+    [
+      "create",
+      {
+        name: "Invoices",
+        account: 4,
+        folder: "INBOX",
+        assign_tags: [8, 15],
+        assign_correspondent: 6,
+        owner: 2,
+      },
+    ],
+    ["update", 9, { account: 4 }],
+  ]);
+});

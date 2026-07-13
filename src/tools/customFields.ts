@@ -3,6 +3,11 @@ import { z } from "zod";
 import { PaperlessAPI } from "../api/PaperlessAPI";
 import { withErrorHandling } from "./utils/middlewares";
 import { buildQueryString } from "./utils/queryString";
+import {
+  entityRef,
+  entityRefDescription,
+  resolveEntityIds,
+} from "./utils/resolve";
 
 export function registerCustomFieldTools(server: McpServer, api: PaperlessAPI) {
   server.tool(
@@ -128,9 +133,11 @@ export function registerCustomFieldTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "bulk_edit_custom_fields",
-    "Bulk edit custom fields. ⚠️ WARNING: 'delete' operation permanently removes custom fields from the entire system.",
+    "Bulk edit custom fields. Fields accept numeric IDs or exact names. ⚠️ WARNING: 'delete' operation permanently removes custom fields from the entire system.",
     {
-      custom_fields: z.array(z.number()),
+      custom_fields: z.array(
+        entityRef().describe(entityRefDescription("custom_field"))
+      ),
       operation: z.enum(["delete"]),
       confirm: z.boolean().optional().describe("Must be true when operation is 'delete' to confirm destructive operation"),
     },
@@ -139,8 +146,13 @@ export function registerCustomFieldTools(server: McpServer, api: PaperlessAPI) {
       if (args.operation === "delete" && !args.confirm) {
         throw new Error("Confirmation required for destructive operation. Set confirm: true to proceed.");
       }
+      const customFieldIds = await resolveEntityIds(
+        api,
+        "custom_field",
+        args.custom_fields
+      );
       const response = await api.bulkEditObjects(
-        args.custom_fields,
+        customFieldIds,
         "custom_field",
         args.operation
       );

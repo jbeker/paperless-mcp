@@ -17,6 +17,11 @@ export function createPaperlessApiMock(): PaperlessAPI {
     getDocumentTypes: async () => emptyPaginationResponse(),
     getTags: async () => emptyPaginationResponse(),
     getCustomFields: async () => emptyPaginationResponse(),
+    getUsers: async () => emptyPaginationResponse(),
+    getGroups: async () => emptyPaginationResponse(),
+    getStoragePaths: async () => emptyPaginationResponse(),
+    getUiSettings: async () => ({ user: { id: 1, username: "testuser" } }),
+    getProfile: async () => ({}),
   } as unknown as PaperlessAPI;
 }
 

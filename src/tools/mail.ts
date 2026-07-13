@@ -3,6 +3,13 @@ import { z } from "zod";
 import { PaperlessAPI } from "../api/PaperlessAPI";
 import { withErrorHandling } from "./utils/middlewares";
 import { buildQueryString } from "./utils/queryString";
+import {
+  EntityRef,
+  entityRef,
+  entityRefDescription,
+  resolveEntityId,
+  resolveEntityIdOrNull,
+} from "./utils/resolve";
 
 const MAIL_RULE_ACTION_DESCRIPTION =
   "Mail rule action: 1=Delete, 2=Move to specified folder, 3=Mark as read/don't process read mails, 4=Flag/don't process flagged mails, 5=Tag/don't process tagged mails";
@@ -19,7 +26,9 @@ const PDF_LAYOUT_DESCRIPTION =
 
 const mailRuleFields = {
   name: z.string().optional(),
-  account: z.number().int().optional(),
+  account: entityRef()
+    .optional()
+    .describe(entityRefDescription("mail_account")),
   enabled: z.boolean().optional(),
   folder: z.string().optional(),
   filter_from: z.string().nullable().optional(),
@@ -44,7 +53,11 @@ const mailRuleFields = {
     .max(3)
     .optional()
     .describe(ASSIGN_TITLE_FROM_DESCRIPTION),
-  assign_tags: z.array(z.number().int().nullable()).optional(),
+  assign_tags: z
+    .array(
+      entityRef().nullable().describe(entityRefDescription("tag"))
+    )
+    .optional(),
   assign_correspondent_from: z
     .number()
     .int()
@@ -52,8 +65,14 @@ const mailRuleFields = {
     .max(4)
     .optional()
     .describe(ASSIGN_CORRESPONDENT_FROM_DESCRIPTION),
-  assign_correspondent: z.number().int().nullable().optional(),
-  assign_document_type: z.number().int().nullable().optional(),
+  assign_correspondent: entityRef()
+    .nullable()
+    .optional()
+    .describe(entityRefDescription("correspondent")),
+  assign_document_type: entityRef()
+    .nullable()
+    .optional()
+    .describe(entityRefDescription("document_type")),
   assign_owner_from_rule: z.boolean().optional(),
   order: z.number().int().optional(),
   attachment_type: z
@@ -77,13 +96,63 @@ const mailRuleFields = {
     .max(4)
     .optional()
     .describe(PDF_LAYOUT_DESCRIPTION),
-  owner: z.number().int().nullable().optional(),
+  owner: entityRef()
+    .nullable()
+    .optional()
+    .describe(entityRefDescription("user", "Owner")),
 } as const;
+
+async function resolveMailRuleRefs<
+  T extends {
+    account?: EntityRef;
+    assign_tags?: Array<EntityRef | null>;
+    assign_correspondent?: EntityRef | null;
+    assign_document_type?: EntityRef | null;
+    owner?: EntityRef | null;
+  }
+>(api: PaperlessAPI, args: T) {
+  const {
+    account,
+    assign_tags,
+    assign_correspondent,
+    assign_document_type,
+    owner,
+    ...rest
+  } = args;
+  const [accountId, assignTags, assignCorrespondent, assignDocumentType, ownerId] =
+    await Promise.all([
+      account === undefined
+        ? undefined
+        : resolveEntityId(api, "mail_account", account),
+      assign_tags
+        ? Promise.all(
+            assign_tags.map((tag) =>
+              tag === null ? null : resolveEntityId(api, "tag", tag)
+            )
+          )
+        : undefined,
+      resolveEntityIdOrNull(api, "correspondent", assign_correspondent),
+      resolveEntityIdOrNull(api, "document_type", assign_document_type),
+      resolveEntityIdOrNull(api, "user", owner),
+    ]);
+  return {
+    ...rest,
+    ...(accountId !== undefined ? { account: accountId } : {}),
+    ...(assignTags !== undefined ? { assign_tags: assignTags } : {}),
+    ...(assignCorrespondent !== undefined
+      ? { assign_correspondent: assignCorrespondent }
+      : {}),
+    ...(assignDocumentType !== undefined
+      ? { assign_document_type: assignDocumentType }
+      : {}),
+    ...(ownerId !== undefined ? { owner: ownerId } : {}),
+  };
+}
 
 export function registerMailTools(server: McpServer, api: PaperlessAPI) {
   server.tool(
     "list_mail_accounts",
-    "List Paperless mail accounts for selecting the account ID needed by mail rules. Does not expose account passwords.",
+    "List Paperless mail accounts. Mail rules accept the account by name or numeric ID. Does not expose account passwords.",
     {
       page: z.number().optional(),
       page_size: z.number().optional(),
@@ -167,16 +236,18 @@ export function registerMailTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "create_mail_rule",
-    "Create a Paperless mail rule. Use list_mail_accounts first to choose account. Prefer attachment-only rules for invoices unless the full mail must be archived.",
+    "Create a Paperless mail rule. The account can be given by name or numeric ID. Prefer attachment-only rules for invoices unless the full mail must be archived.",
     {
       ...mailRuleFields,
       name: z.string(),
-      account: z.number().int(),
+      account: entityRef().describe(entityRefDescription("mail_account")),
       folder: z.string(),
     },
     withErrorHandling(async (args) => {
       if (!api) throw new Error("Please configure API connection first");
-      const response = await api.createMailRule(args);
+      const response = await api.createMailRule(
+        await resolveMailRuleRefs(api, args)
+      );
       return {
         content: [{ type: "text", text: JSON.stringify(response) }],
       };
@@ -193,7 +264,10 @@ export function registerMailTools(server: McpServer, api: PaperlessAPI) {
     withErrorHandling(async (args) => {
       if (!api) throw new Error("Please configure API connection first");
       const { id, ...data } = args;
-      const response = await api.updateMailRule(id, data);
+      const response = await api.updateMailRule(
+        id,
+        await resolveMailRuleRefs(api, data)
+      );
       return {
         content: [{ type: "text", text: JSON.stringify(response) }],
       };

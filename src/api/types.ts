@@ -84,7 +84,7 @@ export interface Document {
   id: number;
   correspondent: number | null;
   document_type: number | null;
-  storage_path: string | null;
+  storage_path: number | null;
   title: string;
   content: string | null;
   tags: number[];
@@ -196,6 +196,77 @@ export interface MailRule {
 }
 
 export interface GetMailRulesResponse extends PaginationResponse<MailRule> {}
+
+export interface User {
+  id: number;
+  username: string;
+  email?: string;
+  first_name?: string;
+  last_name?: string;
+  date_joined?: string;
+  is_staff?: boolean;
+  is_active?: boolean;
+  is_superuser?: boolean;
+  groups?: number[];
+  user_permissions?: string[];
+  inherited_permissions: string[];
+  is_mfa_enabled: boolean;
+}
+
+export interface GetUsersResponse extends PaginationResponse<User> {}
+
+export interface Group {
+  id: number;
+  name: string;
+  permissions: string[];
+}
+
+export interface GetGroupsResponse extends PaginationResponse<Group> {}
+
+export interface StoragePath {
+  id: number;
+  slug: string;
+  name: string;
+  path: string;
+  match: string;
+  matching_algorithm: MatchingAlgorithm;
+  is_insensitive: boolean;
+  document_count: number;
+  owner: number | null;
+  user_can_change: boolean;
+}
+
+export interface GetStoragePathsResponse
+  extends PaginationResponse<StoragePath> {}
+
+/**
+ * The OpenAPI spec types /api/ui_settings/ as only {id, settings}, but live
+ * Paperless-NGX servers include the logged-in user object. Model it as
+ * optional and handle its absence.
+ */
+export interface UiSettingsUser {
+  id: number;
+  username: string;
+  first_name?: string;
+  last_name?: string;
+  is_staff?: boolean;
+  is_superuser?: boolean;
+  groups?: number[];
+}
+
+export interface UiSettingsResponse {
+  user?: UiSettingsUser;
+  settings?: Record<string, unknown> | null;
+  permissions?: string[];
+}
+
+export interface Profile {
+  email?: string;
+  first_name?: string;
+  last_name?: string;
+  is_mfa_enabled?: boolean;
+  has_usable_password?: boolean;
+}
 
 export interface BulkEditDocumentsResult {
   result: string;

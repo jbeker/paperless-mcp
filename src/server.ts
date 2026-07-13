@@ -8,8 +8,10 @@ import { registerDocumentTools } from "./tools/documents";
 import { registerDocumentTypeTools } from "./tools/documentTypes";
 import { registerMailTools } from "./tools/mail";
 import { registerNoteTools } from "./tools/notes";
+import { registerStoragePathTools } from "./tools/storagePaths";
 import { registerTagTools } from "./tools/tags";
 import { registerUploadProxyTools } from "./tools/uploadProxy";
+import { registerUserTools } from "./tools/users";
 
 export interface CreateMcpServerOptions {
   baseUrl: string;
@@ -38,6 +40,8 @@ export function createMcpServer({
   registerCustomFieldTools(server, api);
   registerMailTools(server, api);
   registerUploadProxyTools(server, api);
+  registerUserTools(server, api);
+  registerStoragePathTools(server, api);
   return server;
 }
 
@@ -95,6 +99,8 @@ Paperless-NGX MCP Server Instructions
 - DELETE operations (e.g., delete_tag, delete_correspondent): Permanently delete items from the entire system, affecting ALL documents that use them
 
 When a user asks to "remove" something, prefer operations that affect specific documents. Only use DELETE operations when explicitly asked to delete from the system.
+
+Entity references (correspondents, document types, tags, storage paths, custom fields, mail accounts, owners, permission users/groups) accept either a numeric ID or an exact, case-insensitive name wherever tools take them — no need to look up IDs first. Unknown or ambiguous names return an error listing candidates. Numeric strings are treated as names, so pass IDs as numbers. Use the who_am_i tool to identify the user whose API token this connection uses.
 
 To view documents in your Paperless-NGX web interface, construct URLs using this pattern:
 ${publicUrl}/documents/{document_id}/

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { entityRef, entityRefDescription } from "./resolve";
 
 const CUSTOM_FIELD_QUERY_GROUP_OPERATORS = ["AND", "OR"] as const;
 
@@ -114,10 +115,16 @@ const DOCUMENT_QUERY_BASE_ARGS_SHAPE = {
   page: z.number().optional(),
   page_size: z.number().optional(),
   search: z.string().optional(),
-  correspondent: z.number().optional(),
-  document_type: z.number().optional(),
-  tag: z.number().optional(),
-  storage_path: z.number().optional(),
+  correspondent: entityRef()
+    .optional()
+    .describe(entityRefDescription("correspondent")),
+  document_type: entityRef()
+    .optional()
+    .describe(entityRefDescription("document_type")),
+  tag: entityRef().optional().describe(entityRefDescription("tag")),
+  storage_path: entityRef()
+    .optional()
+    .describe(entityRefDescription("storage_path")),
   created__date__gte: z.string().optional(),
   created__date__lte: z.string().optional(),
   ordering: z.string().optional(),
@@ -160,10 +167,10 @@ export type BuildDocumentQueryArgs = {
   query?: string;
   search?: string;
   more_like_id?: number;
-  correspondent?: number;
-  document_type?: number;
-  tag?: number;
-  storage_path?: number;
+  correspondent?: number | string;
+  document_type?: number | string;
+  tag?: number | string;
+  storage_path?: number | string;
   created__date__gte?: string;
   created__date__lte?: string;
   archive_serial_number?: number;

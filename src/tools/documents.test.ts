@@ -357,7 +357,10 @@ interface DocumentApiCalls {
   getCustomField: number[];
 }
 
-function createDocumentApi(fields: CustomField[]) {
+function createDocumentApi(
+  fields: CustomField[],
+  lookups: Record<string, Array<Record<string, unknown>>> = {}
+) {
   const calls: DocumentApiCalls = {
     updateDocument: [],
     bulkEditDocuments: [],
@@ -365,6 +368,12 @@ function createDocumentApi(fields: CustomField[]) {
   };
   const fieldMap = new Map(fields.map((field) => [field.id, field]));
   const api = {
+    request: async (path: string) => {
+      const endpoint = `${path.split("?")[0]}`;
+      const results = lookups[endpoint];
+      if (!results) throw new Error(`unexpected lookup request: ${path}`);
+      return { count: results.length, next: null, results };
+    },
     getCustomField: async (id: number) => {
       calls.getCustomField.push(id);
       const field = fieldMap.get(id);
@@ -502,5 +511,127 @@ describe("select custom field value resolution in document handlers", () => {
       0,
       "no document update should be sent when the option is invalid"
     );
+  });
+});
+
+describe("name-to-ID resolution in document handlers", () => {
+  test("update_document resolves names and mixed tag refs to numeric IDs", async () => {
+    const { api, calls } = createDocumentApi([], {
+      "/correspondents/": [{ id: 3, name: "Electric Company" }],
+      "/tags/": [
+        { id: 5, name: "taxes" },
+        { id: 9, name: "utilities" },
+      ],
+      "/users/": [{ id: 11, username: "jeremy" }],
+    });
+
+    await withDocumentClient(api, async (client) => {
+      const result = (await client.callTool({
+        name: "update_document",
+        arguments: {
+          id: 42,
+          correspondent: "Electric Company",
+          tags: ["taxes", 7, "Utilities"],
+          owner: "jeremy",
+        },
+      })) as CallToolResult;
+      assert.ok(!result.isError, parseToolText(result)?.error);
+    });
+
+    assert.equal(calls.updateDocument.length, 1);
+    const [id, data] = calls.updateDocument[0];
+    assert.equal(id, 42);
+    assert.equal(data.correspondent, 3);
+    assert.deepEqual(data.tags, [5, 7, 9]);
+    assert.equal(data.owner, 11);
+  });
+
+  test("bulk_edit_documents resolves permission usernames and group names", async () => {
+    const { api, calls } = createDocumentApi([], {
+      "/users/": [
+        { id: 11, username: "jeremy" },
+        { id: 12, username: "alice" },
+      ],
+      "/groups/": [{ id: 2, name: "family" }],
+    });
+
+    await withDocumentClient(api, async (client) => {
+      const result = (await client.callTool({
+        name: "bulk_edit_documents",
+        arguments: {
+          documents: [1, 2],
+          method: "set_permissions",
+          permissions: {
+            owner: "jeremy",
+            set_permissions: {
+              view: { users: ["alice", 11], groups: ["family"] },
+              change: { users: [], groups: [] },
+            },
+          },
+        },
+      })) as CallToolResult;
+      assert.ok(!result.isError, parseToolText(result)?.error);
+    });
+
+    assert.equal(calls.bulkEditDocuments.length, 1);
+    const [documents, method, parameters] = calls.bulkEditDocuments[0];
+    assert.deepEqual(documents, [1, 2]);
+    assert.equal(method, "set_permissions");
+    assert.deepEqual(parameters.permissions, {
+      owner: 11,
+      set_permissions: {
+        view: { users: [12, 11], groups: [2] },
+        change: { users: [], groups: [] },
+      },
+    });
+  });
+
+  test("bulk_edit_documents resolves tag names in add_tags/remove_tags", async () => {
+    const { api, calls } = createDocumentApi([], {
+      "/tags/": [
+        { id: 5, name: "taxes" },
+        { id: 9, name: "archived" },
+      ],
+    });
+
+    await withDocumentClient(api, async (client) => {
+      const result = (await client.callTool({
+        name: "bulk_edit_documents",
+        arguments: {
+          documents: [1],
+          method: "modify_tags",
+          add_tags: ["taxes"],
+          remove_tags: ["archived", 4],
+        },
+      })) as CallToolResult;
+      assert.ok(!result.isError, parseToolText(result)?.error);
+    });
+
+    const [, , parameters] = calls.bulkEditDocuments[0];
+    assert.deepEqual(parameters.add_tags, [5]);
+    assert.deepEqual(parameters.remove_tags, [9, 4]);
+  });
+
+  test("bulk_edit_documents rejects an unknown tag name with suggestions before calling the API", async () => {
+    const { api, calls } = createDocumentApi([], {
+      "/tags/": [{ id: 5, name: "Receipts" }],
+    });
+
+    await withDocumentClient(api, async (client) => {
+      const result = (await client.callTool({
+        name: "bulk_edit_documents",
+        arguments: {
+          documents: [1],
+          method: "add_tag",
+          tag: "Receipt",
+        },
+      })) as CallToolResult;
+      assert.ok(result.isError, "expected an error for an unknown tag name");
+      const message = parseToolText(result)?.error ?? "";
+      assert.match(message, /No tag found matching name "Receipt"/);
+      assert.match(message, /"Receipts" \(id 5\)/);
+    });
+
+    assert.equal(calls.bulkEditDocuments.length, 0);
   });
 });

@@ -11,15 +11,21 @@ import {
   GetCorrespondentsResponse,
   GetCustomFieldsResponse,
   GetDocumentTypesResponse,
+  GetGroupsResponse,
   GetMailAccountsResponse,
   GetMailRulesResponse,
+  GetStoragePathsResponse,
+  GetUsersResponse,
   MailAccount,
   MailRule,
   MintUploadRequest,
   MintUploadResponse,
   GetTagsResponse,
   Note,
+  Profile,
   Tag,
+  UiSettingsResponse,
+  User,
 } from "./types";
 import { headersToObject } from "./utils";
 
@@ -461,6 +467,37 @@ export class PaperlessAPI {
     return this.request<void>(`/custom_fields/${id}/`, {
       method: "DELETE",
     });
+  }
+
+  // User and group operations
+  async getUsers(queryString?: string): Promise<GetUsersResponse> {
+    const url = queryString ? `/users/?${queryString}` : "/users/";
+    return this.request<GetUsersResponse>(url);
+  }
+
+  async getUser(id: number): Promise<User> {
+    return this.request<User>(`/users/${id}/`);
+  }
+
+  async getGroups(queryString?: string): Promise<GetGroupsResponse> {
+    const url = queryString ? `/groups/?${queryString}` : "/groups/";
+    return this.request<GetGroupsResponse>(url);
+  }
+
+  async getUiSettings(): Promise<UiSettingsResponse> {
+    return this.request<UiSettingsResponse>("/ui_settings/");
+  }
+
+  async getProfile(): Promise<Profile> {
+    return this.request<Profile>("/profile/");
+  }
+
+  // Storage path operations
+  async getStoragePaths(queryString?: string): Promise<GetStoragePathsResponse> {
+    const url = queryString
+      ? `/storage_paths/?${queryString}`
+      : "/storage_paths/";
+    return this.request<GetStoragePathsResponse>(url);
   }
 
   // Bulk object operations

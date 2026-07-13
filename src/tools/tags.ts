@@ -8,6 +8,12 @@ import {
 } from "../api/utils";
 import { withErrorHandling } from "./utils/middlewares";
 import { buildQueryString } from "./utils/queryString";
+import {
+  entityRef,
+  entityRefDescription,
+  resolveEntityIds,
+  resolveOwnerAndPermissions,
+} from "./utils/resolve";
 
 export function registerTagTools(server: McpServer, api: PaperlessAPI) {
   server.tool(
@@ -142,9 +148,9 @@ export function registerTagTools(server: McpServer, api: PaperlessAPI) {
 
   server.tool(
     "bulk_edit_tags",
-    "Bulk edit tags. ⚠️ WARNING: 'delete' operation permanently removes tags from the entire system. Use with caution.",
+    "Bulk edit tags. Tags, owner, and permission users/groups accept numeric IDs or exact names. ⚠️ WARNING: 'delete' operation permanently removes tags from the entire system. Use with caution.",
     {
-      tag_ids: z.array(z.number()),
+      tag_ids: z.array(entityRef().describe(entityRefDescription("tag"))),
       operation: z.enum(["set_permissions", "delete"]),
       confirm: z
         .boolean()
@@ -152,16 +158,26 @@ export function registerTagTools(server: McpServer, api: PaperlessAPI) {
         .describe(
           "Must be true when operation is 'delete' to confirm destructive operation"
         ),
-      owner: z.number().optional(),
+      owner: entityRef()
+        .optional()
+        .describe(entityRefDescription("user", "Owner")),
       permissions: z
         .object({
           view: z.object({
-            users: z.array(z.number()).optional(),
-            groups: z.array(z.number()).optional(),
+            users: z
+              .array(entityRef().describe(entityRefDescription("user")))
+              .optional(),
+            groups: z
+              .array(entityRef().describe(entityRefDescription("group")))
+              .optional(),
           }),
           change: z.object({
-            users: z.array(z.number()).optional(),
-            groups: z.array(z.number()).optional(),
+            users: z
+              .array(entityRef().describe(entityRefDescription("user")))
+              .optional(),
+            groups: z
+              .array(entityRef().describe(entityRefDescription("group")))
+              .optional(),
           }),
         })
         .optional(),
@@ -174,14 +190,18 @@ export function registerTagTools(server: McpServer, api: PaperlessAPI) {
           "Confirmation required for destructive operation. Set confirm: true to proceed."
         );
       }
+      const [tagIds, resolved] = await Promise.all([
+        resolveEntityIds(api, "tag", args.tag_ids),
+        resolveOwnerAndPermissions(api, args),
+      ]);
       return api.bulkEditObjects(
-        args.tag_ids,
+        tagIds,
         "tags",
         args.operation,
         args.operation === "set_permissions"
           ? {
-              owner: args.owner,
-              permissions: args.permissions,
+              owner: resolved.owner,
+              permissions: resolved.permissions,
               merge: args.merge,
             }
           : {}

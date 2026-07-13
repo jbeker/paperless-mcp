@@ -8,6 +8,12 @@ import {
 } from "../api/utils";
 import { withErrorHandling } from "./utils/middlewares";
 import { buildQueryString } from "./utils/queryString";
+import {
+  entityRef,
+  entityRefDescription,
+  resolveEntityIds,
+  resolveOwnerAndPermissions,
+} from "./utils/resolve";
 
 export function registerCorrespondentTools(
   server: McpServer,
@@ -143,9 +149,11 @@ export function registerCorrespondentTools(
 
   server.tool(
     "bulk_edit_correspondents",
-    "Bulk edit correspondents. ⚠️ WARNING: 'delete' operation permanently removes correspondents from the entire system.",
+    "Bulk edit correspondents. Correspondents, owner, and permission users/groups accept numeric IDs or exact names. ⚠️ WARNING: 'delete' operation permanently removes correspondents from the entire system.",
     {
-      correspondent_ids: z.array(z.number()),
+      correspondent_ids: z.array(
+        entityRef().describe(entityRefDescription("correspondent"))
+      ),
       operation: z.enum(["set_permissions", "delete"]),
       confirm: z
         .boolean()
@@ -153,16 +161,26 @@ export function registerCorrespondentTools(
         .describe(
           "Must be true when operation is 'delete' to confirm destructive operation"
         ),
-      owner: z.number().optional(),
+      owner: entityRef()
+        .optional()
+        .describe(entityRefDescription("user", "Owner")),
       permissions: z
         .object({
           view: z.object({
-            users: z.array(z.number()).optional(),
-            groups: z.array(z.number()).optional(),
+            users: z
+              .array(entityRef().describe(entityRefDescription("user")))
+              .optional(),
+            groups: z
+              .array(entityRef().describe(entityRefDescription("group")))
+              .optional(),
           }),
           change: z.object({
-            users: z.array(z.number()).optional(),
-            groups: z.array(z.number()).optional(),
+            users: z
+              .array(entityRef().describe(entityRefDescription("user")))
+              .optional(),
+            groups: z
+              .array(entityRef().describe(entityRefDescription("group")))
+              .optional(),
           }),
         })
         .optional(),
@@ -175,14 +193,18 @@ export function registerCorrespondentTools(
           "Confirmation required for destructive operation. Set confirm: true to proceed."
         );
       }
+      const [correspondentIds, resolved] = await Promise.all([
+        resolveEntityIds(api, "correspondent", args.correspondent_ids),
+        resolveOwnerAndPermissions(api, args),
+      ]);
       return api.bulkEditObjects(
-        args.correspondent_ids,
+        correspondentIds,
         "correspondents",
         args.operation,
         args.operation === "set_permissions"
           ? {
-              owner: args.owner,
-              permissions: args.permissions,
+              owner: resolved.owner,
+              permissions: resolved.permissions,
               merge: args.merge,
             }
           : {}
